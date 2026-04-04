@@ -1,0 +1,63 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": true,
+  "instructions": [
+    ".opencode/rules/philosophy.md",
+    ".opencode/rules/constraints.md",
+    ".opencode/rules/interfaces-core.md",
+    ".opencode/rules/interfaces-runtime.md",
+    ".opencode/rules/architecture.md",
+    ".opencode/rules/security.md",
+    ".opencode/rules/task-context.md",
+    ".opencode/rules/index.md"
+  ],
+  "agent": {
+    "spsa": {
+      "description": "Senior Principal Software Architect. Architectural review, interface contract decisions, security boundary assessment, ADR evaluation, and final approval of SPBED output.",
+      "mode": "subagent",
+      "prompt": "{file:.opencode/agents/spsa.md}",
+      "permission": {
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "list": "allow",
+        "websearch": "allow",
+        "webfetch": "allow",
+        "question": "allow",
+        "bash": "deny",
+        "write": "deny",
+        "edit": "deny"
+      }
+    },
+    "spbed": {
+      "description": "Senior Principal Back-End Developer. Implementing features, writing adapters, refactoring code, writing tests, and producing TypeScript output within contract boundaries.",
+      "mode": "subagent",
+      "prompt": "{file:.opencode/agents/spbed.md}",
+      "permission": {
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "list": "allow",
+        "bash": "allow",
+        "write": "allow",
+        "edit": "allow",
+        "question": "allow"
+      }
+    },
+    "spqae": {
+      "description": "Senior Principal QA Engineer. Evaluating test sufficiency, reviewing coverage thresholds, identifying missing test scenarios, and assessing test structure.",
+      "mode": "subagent",
+      "prompt": "{file:.opencode/agents/spqae.md}",
+      "permission": {
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "list": "allow",
+        "bash": "allow",
+        "question": "allow",
+        "write": "deny",
+        "edit": "deny"
+      }
+    }
+  }
+}
