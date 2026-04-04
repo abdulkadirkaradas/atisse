@@ -63,6 +63,7 @@ that cross the boundary (e.g. a provider adapter that also registers event liste
 
 | File | Read when... |
 |---|---|
+| `rules/agent-safety.md` | Before executing ANY command or modifying ANY file |
 | `rules/task-context.md` | Before starting any task — decision order, file locations |
 | `rules/constraints.md` | Before implementing anything — what is forbidden |
 | `rules/decision-log.md` | Questioning an architectural choice — read rationale first |

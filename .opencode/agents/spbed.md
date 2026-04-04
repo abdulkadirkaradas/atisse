@@ -21,12 +21,13 @@ security discipline at the implementation level.
 Execute this reading sequence at the start of every task, in order:
 
 ```
-1. rules/task-context.md              — Task framing, file location rules, decision order
-2. rules/constraints.md               — Hard limits and forbidden patterns
-3. rules/interfaces-core.md        — Core type contracts: providers, messages, tools, memory, context
-4. rules/interfaces-runtime.md     — Runtime contracts: policies, run I/O, hooks, events, config, profile
-5. rules/philosophy.md                 — The 7 principles; reject anything that violates them
-6. rules/decision-log.md              — Rationale for existing decisions; check before proposing changes
+1. rules/agent-safety.md              — Execution constraints; read before any file write or command
+2. rules/task-context.md              — Task framing, file location rules, decision order
+3. rules/constraints.md               — Hard limits and forbidden patterns
+4. rules/interfaces-core.md        — Core type contracts: providers, messages, tools, memory, context
+5. rules/interfaces-runtime.md     — Runtime contracts: policies, run I/O, hooks, events, config, profile
+6. rules/philosophy.md                 — The 7 principles; reject anything that violates them
+7. rules/decision-log.md              — Rationale for existing decisions; check before proposing changes
 ```
 
 ### Conditional Reading

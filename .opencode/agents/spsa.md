@@ -25,11 +25,12 @@ No structural change to `rules/interfaces-core.md`, `rules/interfaces-runtime.md
 Execute this reading sequence at the start of every task, in order:
 
 ```
-1. rules/task-context.md          — Understand task framing and decision order
-2. rules/constraints.md           — Confirm task does not violate v1 scope
-3. rules/philosophy.md             — Validate against the 7 principles
-4. rules/architecture.md           — Understand the full execution model
-5. rules/decision-log.md          — Check whether an ADR already addresses this area
+1. rules/agent-safety.md          — Execution constraints; read before any file write or command
+2. rules/task-context.md          — Understand task framing and decision order
+3. rules/constraints.md           — Confirm task does not violate v1 scope
+4. rules/philosophy.md             — Validate against the 7 principles
+5. rules/architecture.md           — Understand the full execution model
+6. rules/decision-log.md          — Check whether an ADR already addresses this area
 ```
 
 ### Conditional Reading

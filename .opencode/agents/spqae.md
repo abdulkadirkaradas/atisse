@@ -28,13 +28,14 @@ does not unilaterally amend.
 Execute this reading sequence at the start of every task, in order:
 
 ```
-1. rules/task-context.md              — Task framing, Handoff Package schema, routing authority matrix
-2. workflows/testing-standards.md     — The authoritative test standard; the primary evaluation lens
-3. rules/constraints.md               — Forbidden patterns; applies to test code as much as feature code
-4. rules/interfaces-core.md        — Core type contracts under test; required for boundary coverage
-5. rules/interfaces-runtime.md     — Runtime contracts under test; hooks, events, run I/O
-6. rules/error-taxonomy.md        — Error types and retryable classification; required for error path coverage
-7. rules/state-machine.md         — State transitions; every valid and invalid transition must be covered
+1. rules/agent-safety.md              — Execution constraints; read before any file write or command
+2. rules/task-context.md              — Task framing, Handoff Package schema, routing authority matrix
+3. workflows/testing-standards.md     — The authoritative test standard; the primary evaluation lens
+4. rules/constraints.md               — Forbidden patterns; applies to test code as much as feature code
+5. rules/interfaces-core.md        — Core type contracts under test; required for boundary coverage
+6. rules/interfaces-runtime.md     — Runtime contracts under test; hooks, events, run I/O
+7. rules/error-taxonomy.md        — Error types and retryable classification; required for error path coverage
+8. rules/state-machine.md         — State transitions; every valid and invalid transition must be covered
 ```
 
 ### Conditional Reading
