@@ -11,24 +11,24 @@
 
 ### Mandatory Reading
 
-Per `@.opencode/rules/task-context.md` §"Before Starting Any Task":
+Per `.opencode/rules/task-context.md` §"Before Starting Any Task":
 
-1. `@.opencode/rules/interfaces-core.md` — core type contracts
-2. `@.opencode/rules/interfaces-runtime.md` — runtime contracts
-3. `@.opencode/rules/error-taxonomy.md` — error hierarchy and `isRetryable()` rules
-4. `@.opencode/rules/state-machine.md` — `LifecycleStateMachine` contract and transition table
-5. `@.opencode/rules/constraints.md` — forbidden patterns
-6. `@.opencode/rules/typescript-style.md` — naming, typing, async conventions
-7. `@.opencode/rules/implementation-standards.md` — defensive programming, size limits
-8. `@.opencode/workflows/testing-standards.md` — MockProvider API, test structure
+1. `.opencode/rules/interfaces-core.md` — core type contracts
+2. `.opencode/rules/interfaces-runtime.md` — runtime contracts
+3. `.opencode/rules/error-taxonomy.md` — error hierarchy and `isRetryable()` rules
+4. `.opencode/rules/state-machine.md` — `LifecycleStateMachine` contract and transition table
+5. `.opencode/rules/constraints.md` — forbidden patterns
+6. `.opencode/rules/typescript-style.md` — naming, typing, async conventions
+7. `.opencode/rules/implementation-standards.md` — defensive programming, size limits
+8. `.opencode/workflows/testing-standards.md` — MockProvider API, test structure
 
 ### Conditional Reading
 
 Optional but highly recommended for deeper context and rationale behind the implementation patterns and decisions in this plan:
 
-1. `@.opencode/rules/decision-log.md` — key decisions and ADRs that affect implementation; not required but provides helpful context and rationale for certain patterns
+1. `.opencode/rules/decision-log.md` — key decisions and ADRs that affect implementation; not required but provides helpful context and rationale for certain patterns
 2. `(ADR-0*)` references in the checklists link to specific ADRs in the decision log for deeper context on those decisions. For reference see `1.`
-3. IF you seen like a expression `(B1)`, `(A1 -> Decision 1)`, `(B2 -> Decision 2)`, etc. in the tables, texts, that references a specific decision in the `@.opencode/additional-files/decision-records/M1-decision-record.md` file. These are mandatory reading when you are implementing the related checklist item, as they contain the rationale and context behind those decisions. For example, if you see `(A2 -> Decision 2)` next to "No project references", you would look up `(A2 -> Decision 2)` in the decision record to understand why that choice was made and any relevant discussion points.
+3. IF you seen like a expression `(B1)`, `(A1 -> Decision 1)`, `(B2 -> Decision 2)`, etc. in the tables, texts, that references a specific decision in the `.opencode/additional-files/decision-records/M1-decision-record.md` file. These are mandatory reading when you are implementing the related checklist item, as they contain the rationale and context behind those decisions. For example, if you see `(A2 -> Decision 2)` next to "No project references", you would look up `(A2 -> Decision 2)` in the decision record to understand why that choice was made and any relevant discussion points.
 
 ---
 
@@ -42,7 +42,7 @@ Optional but highly recommended for deeper context and rationale behind the impl
 | `package.json` (root)                       | Workspace scripts: `lint`, `typecheck`, `test`, `build`                                        |
 | `tsconfig.base.json`                        | Root TS config — all packages extend this                                                      |
 | `eslint.config.mjs`                         | Flat config — single file at root covering all packages                                        |
-| `.prettierrc`                               | Formatting rules per `typescript_style.md`                                                     |
+| `.prettierrc`                               | Formatting rules per `.opencode/rules/typescript-style.md`                                                     |
 | `.prettierignore`                           | Excludes: `dist/`, `node_modules/`, `coverage/`, `*.md`                                        |
 | `vitest.base.config.ts`                     | Shared Vitest config — each package extends                                                    |
 | `packages/core/package.json`                | `@atisse/core` — exports field with two entry points; includes `"engines": { "node": ">=20" }` |
@@ -56,7 +56,7 @@ Optional but highly recommended for deeper context and rationale behind the impl
 
 ### Key Decisions Applied
 
-- **Module resolution:** `NodeNext` — per `typescript_style.md` §TypeScript Configuration. All internal imports use `.js` extension.
+- **Module resolution:** `NodeNext` — per `.opencode/rules/typescript-style.md` §TypeScript Configuration. All internal imports use `.js` extension.
 - **`lib: ["ES2022"]`** — runtime-agnostic base; `@types/node` as devDependency per package, never in base (A2 -> Decision 1).
 - **No project references** — simple `extends` only (A2 -> Decision 2).
 - **ESLint flat config** — `eslint.config.mjs`, single root file (A3 -> Decision 3).
@@ -73,10 +73,10 @@ Optional but highly recommended for deeper context and rationale behind the impl
 
 ## 3. Phase 2 — `packages/core/src/interfaces.ts`
 
-**STATUS: FROZEN upon creation.** Per `interfaces-core.md` and `interfaces-runtime.md`.
-No runtime code — type declarations only. Every exported symbol gets JSDoc — per `api_design.md` §Documentation Requirements.
+**STATUS: FROZEN upon creation.** Per `.opencode/rules/interfaces-core.md` and `.opencode/rules/interfaces-runtime.md`.
+No runtime code — type declarations only. Every exported symbol gets JSDoc — per `.opencode/rules/api-design.md` §Documentation Requirements.
 
-### Types to Define — From `interfaces-core.md`
+### Types to Define — From `.opencode/rules/interfaces-core.md`
 
 | Symbol                        | Key Decision                                                                                                                        |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -90,7 +90,7 @@ No runtime code — type declarations only. Every exported symbol gets JSDoc —
 | `Message`                     | 4-arm discriminated union; `tool` arm: `toolCallId` and `name` required; `assistant` arm: `toolCalls?` (B2 -> Decision 2/ADR-018)   |
 | `MessageContent`              | `text` and `image` discriminated union; `url` accepts data URIs (B2 -> Decision 5)                                                  |
 | `SystemMessage`               | `Extract<Message, { role: 'system' }>` — derived from union, not standalone (B4 -> Decision 6)                                      |
-| `ToolDefinition`              | `inputSchema: Record<string, unknown>` — empty `{}` forbidden per `constraints.md`                                                  |
+| `ToolDefinition`              | `inputSchema: Record<string, unknown>` — empty `{}` forbidden per `.opencode/rules/constraints.md`                                                  |
 | `Tool extends ToolDefinition` | `execute(input: unknown): Promise<unknown>` — typed generics V2 (B3 -> Decision 2)                                                  |
 | `ToolCall`                    | `id` required — adapter must generate via `randomUUID()` if provider omits (B3 -> Decision 3)                                       |
 | `ToolResult`                  | Discriminated union — `output` and `error` mutually exclusive (B3 -> Decision 4/ADR-020)                                            |
@@ -100,7 +100,7 @@ No runtime code — type declarations only. Every exported symbol gets JSDoc —
 | `ContextProvider`             | `provide()` returns `Promise<SystemMessage[]>` (B4 -> Decision 6)                                                                   |
 | `TokenUsage`                  | `prompt`, `completion`, `total`                                                                                                     |
 
-### Types to Define — From `interfaces-runtime.md`
+### Types to Define — From `.opencode/rules/interfaces-runtime.md`
 
 | Symbol                    | Key Decision                                                                                                                      |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -129,7 +129,7 @@ No runtime code — type declarations only. Every exported symbol gets JSDoc —
 
 ## 4. Phase 3 — `packages/core/src/errors.ts`
 
-Per `error_taxonomy.md`.
+Per `.opencode/rules/error-taxonomy.md`.
 
 **Import pattern:**
 
@@ -137,13 +137,13 @@ Per `error_taxonomy.md`.
 import type { LifecycleState, OrchestratorErrorCode } from "./interfaces.js";
 ```
 
-`import type` only — no runtime circular dependency. Per `typescript_style.md` §Type Declarations.
+`import type` only — no runtime circular dependency. Per `.opencode/rules/typescript-style.md` §Type Declarations.
 
 ### Implementation Checklist
 
 - [ ] `OrchestratorError` abstract base — `code: OrchestratorErrorCode`, `retryable: boolean`, `cause?: unknown`; `fatal` field absent (C1 -> 1-2/ADR-028)
 - [ ] `Error.captureStackTrace` guarded: `if (Error.captureStackTrace) { ... }` — edge runtime compat
-- [ ] All 14 concrete classes per `error_taxonomy.md` §Full TypeScript Definitions — exact constructors
+- [ ] All 14 concrete classes per `.opencode/rules/error-taxonomy.md` §Full TypeScript Definitions — exact constructors
 - [ ] `ProviderRateLimitError` — `retryAfterMs?: number` parameter
 - [ ] `InvalidStateTransitionError` — `from: LifecycleState, to: LifecycleState | 'any'` (C2 -> Decision 3)
 - [ ] `TokenLimitExceededError` — kernel does NOT throw this; for `beforeRun` hooks only (C2 -> Decision 4)
@@ -154,18 +154,18 @@ import type { LifecycleState, OrchestratorErrorCode } from "./interfaces.js";
 
 ## 5. Phase 4 — `packages/core/src/lifecycle.ts`
 
-Per `state_machine.md`.
+Per `.opencode/rules/state-machine.md`.
 
 ### Implementation Checklist
 
-- [ ] `VALID_TRANSITIONS: Record<LifecycleState, LifecycleState[]>` — NOT exported (D1 -> Decision 1); per `api_design.md` §Export Surface Rules
+- [ ] `VALID_TRANSITIONS: Record<LifecycleState, LifecycleState[]>` — NOT exported (D1 -> Decision 1); per `.opencode/rules/api-design.md` §Export Surface Rules
 - [ ] All 11 states covered; terminal states (`COMPLETED`, `FAILED`) have empty arrays
 - [ ] `LifecycleStateMachine` class — `private current: LifecycleState = 'INITIALIZED'`
 - [ ] `transition(to: LifecycleState): LifecycleState` — returns previous state (D1 -> Decision 5/ADR-029)
 - [ ] `get state(): LifecycleState`
 - [ ] `isTerminal(): boolean` — checks `COMPLETED` or `FAILED`
 - [ ] `assertNotTerminal(): void` — throws `InvalidStateTransitionError(this.current, 'any')`
-- [ ] No `runId` or `Logger` held on instance — per `state_machine.md` Rule 9
+- [ ] No `runId` or `Logger` held on instance — per `.opencode/rules/state-machine.md` Rule 9
 - [ ] State does not change when `transition()` throws
 
 ---
@@ -197,7 +197,7 @@ Command: `pnpm --filter @atisse/core typecheck`
 
 ## 7. Layer Compliance
 
-Per `architecture.md` §Internal Layer Architecture — enforced by ESLint import plugin:
+Per `.opencode/rules/architecture.md` §Internal Layer Architecture — enforced by ESLint import plugin:
 
 | File            | Layer           | May import from                        |
 | --------------- | --------------- | -------------------------------------- |
@@ -207,11 +207,11 @@ Per `architecture.md` §Internal Layer Architecture — enforced by ESLint impor
 | `lifecycle.ts`  | L1 — primitives | L0 only                                |
 
 Upward imports are **FORBIDDEN**. Runtime circular imports are **FORBIDDEN**.
-`import type` between L0 files is permitted per `architecture.md`.
+`import type` between L0 files is permitted per `.opencode/rules/architecture.md`.
 
 ## 8. Phase 5 — Test Infrastructure
 
-Per `testing_standards.md` §MockProvider API Contract and §Mock Infrastructure.
+Per `.opencode/workflows/testing-standards.md` §MockProvider API Contract and §Mock Infrastructure.
 All test files live under `packages/core/tests/`.
 
 ### `packages/core/src/testing/mock-provider.ts`
@@ -237,7 +237,7 @@ All test files live under `packages/core/tests/`.
 - [ ] `reset(): void` — clears queue, `_callCount`, `_history`
 - [ ] `generate(request)` — increments `_callCount`, pushes to `_history`; throws `ProviderUnavailableError` if queue empty; throws entry.error if error entry; returns `PromptResponse` with default usage `{ prompt: 0, completion: 0, total: 0 }`
 - [ ] `generateStream(request)` — returns `Promise<AsyncIterable<StreamChunk>>`; character-level `{ type: 'text', delta: char }` chunks; `{ type: 'done' }` terminator; `{ type: 'error' }` for error entry; `ProviderUnavailableError` as error chunk if queue empty
-- [ ] Async IIFE pattern for streaming generator — no `.then()/.catch()` chains per `implementation_standards.md` §Async
+- [ ] Async IIFE pattern for streaming generator — no `.then()/.catch()` chains per `.opencode/rules/implementation-standards.md` §Async
 
 ### `packages/core/src/testing/index.ts`
 
@@ -250,28 +250,28 @@ Enables `import { MockProvider } from '@atisse/core/testing'`.
 
 ### `packages/core/tests/fixtures/mock-memory.ts`
 
-Per updated `testing_standards.md` §MockMemoryAdapter:
+Per updated `.opencode/workflows/testing-standards.md` §MockMemoryAdapter:
 
 - [ ] `MockMemoryAdapter implements MemoryAdapter`
 - [ ] `private store: Map<string, Message[]>`
 - [ ] `public loadError?: OrchestratorError`
 - [ ] `public saveError?: OrchestratorError`
 - [ ] `load()` — throws `loadError` if set; returns `[]` for unknown session
-- [ ] `save()` — throws `saveError` if set; append semantics per `interfaces-core.md` Rule 3
-- [ ] `clear()` — idempotent; no-op for unknown session per `interfaces-core.md` Rule 4
+- [ ] `save()` — throws `saveError` if set; append semantics per `.opencode/rules/interfaces-core.md` Rule 3
+- [ ] `clear()` — idempotent; no-op for unknown session per `.opencode/rules/interfaces-core.md` Rule 4
 
 ### `packages/core/tests/fixtures/mock-tools.ts`
 
-Per updated `testing_standards.md` §Standard Mock Tools. All tools must have non-empty `inputSchema` with `additionalProperties: false` — per `constraints.md` and `security.md` S-3a.
+Per updated `.opencode/workflows/testing-standards.md` §Standard Mock Tools. All tools must have non-empty `inputSchema` with `additionalProperties: false` — per `.opencode/rules/constraints.md` and `.opencode/rules/security.md` S-3a.
 
 - [ ] `echoTool` — returns input unchanged; `inputSchema` accepts `{ value: string }`
 - [ ] `failingTool` — throws `ToolExecutionError('failing-tool', new Error('simulated failure'))`
 - [ ] `validationFailTool` — throws `ToolValidationError('validation-fail-tool', ['schema mismatch'])`
-- [ ] `slowTool` — configurable `delayMs`; resolves after delay; use with `vi.useFakeTimers()` per `testing_standards.md`
+- [ ] `slowTool` — configurable `delayMs`; resolves after delay; use with `vi.useFakeTimers()` per `.opencode/workflows/testing-standards.md`
 
 ### `packages/core/tests/fixtures/builders.ts`
 
-Per updated `testing_standards.md` §Test Object Builders:
+Per updated `.opencode/workflows/testing-standards.md` §Test Object Builders:
 
 - [ ] `buildConfig(overrides?: Partial<OrchestratorConfig>): OrchestratorConfig` — includes fresh `MockProvider`; retry defaults: `{ maxAttempts: 1, baseDelayMs: 0, jitter: false }`
 - [ ] `buildTool(overrides?: Partial<Tool>): Tool` — valid `inputSchema` with `additionalProperties: false`
@@ -287,7 +287,7 @@ Internal cross-cutting types not exported from `interfaces.ts`. May be minimal a
 
 ### `packages/core/src/index.ts`
 
-Public API surface. Per `api_design.md` §Export Surface Rules — export only what users need.
+Public API surface. Per `.opencode/rules/api-design.md` §Export Surface Rules — export only what users need.
 
 **Exports:**
 
@@ -360,7 +360,7 @@ export {
 export { LifecycleStateMachine } from "./lifecycle.js";
 ```
 
-**Does NOT export** (per `api_design.md`): `VALID_TRANSITIONS`, `types.ts` internals, M2+ implementation files.
+**Does NOT export** (per `.opencode/rules/api-design.md`): `VALID_TRANSITIONS`, `types.ts` internals, M2+ implementation files.
 
 ### `packages/memory-inmemory/src/index.ts`
 
@@ -370,7 +370,7 @@ Skeleton only in M1 — compiles but throws `Error('Not implemented — M2 deliv
 
 ## 10. Phase 7 — Unit Tests
 
-Per `testing_standards.md` §What MUST be Tested. M1 tests cover only M1 files.
+Per `.opencode/workflows/testing-standards.md` §What MUST be Tested. M1 tests cover only M1 files.
 All tests use `vi.useFakeTimers()` per-test when delays are involved — never globally.
 
 ### `packages/core/tests/unit/errors.test.ts`
@@ -391,7 +391,7 @@ All tests use `vi.useFakeTimers()` per-test when delays are involved — never g
 
 ### `packages/core/tests/unit/lifecycle.test.ts`
 
-Per `state_machine.md` §Rules and §Valid Transitions Table:
+Per `.opencode/rules/state-machine.md` §Rules and §Valid Transitions Table:
 
 - [ ] Initial state is `INITIALIZED`
 - [ ] `transition()` returns previous state (D1 -> Decision 5/ADR-029)
@@ -424,7 +424,7 @@ Per `state_machine.md` §Rules and §Valid Transitions Table:
 
 ## 11. Phase 8 — CI Pipeline
 
-Per `sdlc.md` §CI/CD Pipeline.
+Per `.opencode/workflows/sdlc.md` §CI/CD Pipeline.
 
 **`.github/workflows/ci.yml`** — runs on every PR and push to `main`:
 
@@ -442,7 +442,7 @@ Node.js version: 20. Package manager: pnpm (latest stable).
 
 ## 12. Constraint Verification Checklist
 
-Per `constraints.md` and `typescript_style.md` — applied to every M1 file before PR:
+Per `.opencode/rules/constraints.md` and `.opencode/rules/typescript-style.md` — applied to every M1 file before PR:
 
 - [ ] No `any` type anywhere
 - [ ] No `!` non-null assertion unless provably safe
@@ -453,16 +453,16 @@ Per `constraints.md` and `typescript_style.md` — applied to every M1 file befo
 - [ ] `VALID_TRANSITIONS` not exported from `lifecycle.ts`
 - [ ] `LifecycleStateMachine` holds no `runId` or `Logger` reference
 - [ ] All imports use `.js` extension (NodeNext module resolution)
-- [ ] No `.then()/.catch()` chains — `async/await` only per `implementation_standards.md` §Async
+- [ ] No `.then()/.catch()` chains — `async/await` only per `.opencode/rules/implementation-standards.md` §Async
 
 ---
 
 ## 13. Security Checklist
 
-Per `security.md` §Security Review Checklist, applied to M1 scope:
+Per `.opencode/rules/security.md` §Security Review Checklist, applied to M1 scope:
 
 - [ ] No secrets in any file (S-1)
-- [ ] `provider.id` used in logs is safe — configuration metadata, not a secret (S-1 note per `security.md`)
+- [ ] `provider.id` used in logs is safe — configuration metadata, not a secret (S-1 note per `.opencode/rules/security.md`)
 - [ ] `ContextProvider.provide()` typed to return `SystemMessage[]` — `role: 'system'` trust boundary at compile time (S-2, S-6)
 - [ ] `ToolResultError` and `EventErrorPayload` kept separate interfaces — no accidental interchange (B10 -> Decision 2/ADR-023)
 - [ ] `pnpm audit --audit-level=high` clean (S-8)
@@ -471,10 +471,10 @@ Per `security.md` §Security Review Checklist, applied to M1 scope:
 
 ## 14. Exit Criteria
 
-Per `roadmap.md` §M1 Exit Criteria — M1 is complete when ALL pass:
+Per `.opencode/rules/roadmap.md` §M1 Exit Criteria — M1 is complete when ALL pass:
 
 - [ ] `interfaces.ts` compiles without TypeScript errors
-- [ ] All types in `interfaces-core.md` and `interfaces-runtime.md` are represented exactly
+- [ ] All types in `.opencode/rules/interfaces-core.md` and `.opencode/rules/interfaces-runtime.md` are represented exactly
 - [ ] `pnpm --recursive lint` exits 0
 - [ ] `pnpm --recursive typecheck` exits 0
 - [ ] `pnpm --recursive test` exits 0 — `MockProvider` suite passes without a working kernel
@@ -486,5 +486,5 @@ Per `roadmap.md` §M1 Exit Criteria — M1 is complete when ALL pass:
 
 ## 15. What M1 Does NOT Include
 
-Per `roadmap.md` §M2+ and `constraints.md` §v1 Scope Hard Limits.
+Per `.opencode/rules/roadmap.md` §M2+ and `.opencode/rules/constraints.md` §v1 Scope Hard Limits.
 Do not implement or scaffold: `policies.ts`, `prompt-composer.ts`, `tool-controller.ts`, `hooks.ts`, `events.ts`, `profile.ts`, `pipeline.ts`, `orchestrator.ts`, full `InMemoryAdapter`, any provider adapter, streaming implementation, or any agent/workflow/parallel-tool feature.
