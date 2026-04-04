@@ -9,8 +9,12 @@
     ".opencode/rules/architecture.md",
     ".opencode/rules/security.md",
     ".opencode/rules/task-context.md",
-    ".opencode/rules/index.md"
+    ".opencode/rules/index.md",
+    ".opencode/rules/agent-safety.md"
   ],
+  "watcher": {
+    "ignore": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"]
+  },
   "agent": {
     "spsa": {
       "description": "Senior Principal Software Architect. Architectural review, interface contract decisions, security boundary assessment, ADR evaluation, and final approval of SPBED output.",
