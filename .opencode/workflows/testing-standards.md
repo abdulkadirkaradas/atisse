@@ -3,6 +3,7 @@ description: Test structure, coverage thresholds, MockProvider API contract, req
 ---
 
 # TESTING STANDARDS
+
 ## Test Strategy, Structure, and Coverage Requirements
 
 ---
@@ -31,12 +32,12 @@ Fake timers: vi.useFakeTimers() — activated per-test only, never globally
 
 ## Coverage Requirements
 
-| Package | Minimum Coverage |
-|---|---|
-| `@atisse/core` | 70% lines, 70% branches |
-| `@atisse/provider-openai` | 60% lines |
-| `@atisse/memory-redis` | 60% lines |
-| `@atisse/context-rag` | 50% lines |
+| Package                   | Minimum Coverage        |
+| ------------------------- | ----------------------- |
+| `@atisse/core`            | 70% lines, 70% branches |
+| `@atisse/provider-openai` | 60% lines               |
+| `@atisse/memory-redis`    | 60% lines               |
+| `@atisse/context-rag`     | 50% lines               |
 
 Coverage is measured per PR. PRs that drop coverage below thresholds are blocked.
 
@@ -150,10 +151,10 @@ class MockMemoryAdapter implements MemoryAdapter {
 ### Standard Mock Tools (`tests/fixtures/mock-tools.ts`)
 
 ```typescript
-echoTool          // returns input unchanged — for basic tool flow tests
-failingTool       // throws ToolExecutionError — for retryable failure tests
-validationFailTool // throws ToolValidationError — for fatal schema failure tests
-slowTool          // introduces delay — for timeout tests (use with fake timers)
+echoTool; // returns input unchanged — for basic tool flow tests
+failingTool; // throws ToolExecutionError — for retryable failure tests
+validationFailTool; // throws ToolValidationError — for fatal schema failure tests
+slowTool; // introduces delay — for timeout tests (use with fake timers)
 ```
 
 ### Test Object Builders (`tests/fixtures/builders.ts`)

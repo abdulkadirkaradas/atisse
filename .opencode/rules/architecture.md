@@ -189,12 +189,12 @@ Steps 1–4 identical to non-streaming. From Step 5:
 
 `BaseConfig + ProfileOverride = ResolvedConfig` (local to this `run()` call only).
 
-| Field | Merge strategy |
-|---|---|
-| `provider`, `systemPrompt` | profile value replaces base (`??`) |
-| `retry`, `timeout`, `toolPolicy` | deep merge — profile keys override matching base keys |
-| `tools`, `contextProviders` | full replace — base list discarded when profile defines either (`[]` also replaces) |
-| `hooks` | concatenate — base hooks first, then profile hooks |
+| Field                            | Merge strategy                                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------- |
+| `provider`, `systemPrompt`       | profile value replaces base (`??`)                                                  |
+| `retry`, `timeout`, `toolPolicy` | deep merge — profile keys override matching base keys                               |
+| `tools`, `contextProviders`      | full replace — base list discarded when profile defines either (`[]` also replaces) |
+| `hooks`                          | concatenate — base hooks first, then profile hooks                                  |
 
 Profile key not found in `config.profiles` → `ConfigValidationError` at `run()` entry.
 `profile.resolved` event emitted after merge, before `CONTEXT_INJECTING`.

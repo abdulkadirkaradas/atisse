@@ -1,4 +1,5 @@
 # INTERFACES — CORE CONTRACTS
+
 ## Frozen Public Contracts — v1 · Part 1 of 2
 
 **STATUS: FROZEN**
@@ -16,10 +17,17 @@ Exported so consumers can type-check `InvalidStateTransitionError.from` / `.to` 
 
 ```typescript
 export type LifecycleState =
-  | 'INITIALIZED'     | 'CONTEXT_INJECTING' | 'CONTEXT_INJECTED'
-  | 'PROMPT_COMPOSED' | 'GENERATING'         | 'TOOL_EXECUTING'
-  | 'RETRYING'        | 'FALLBACKING'         | 'COMPLETING'
-  | 'COMPLETED'       | 'FAILED';
+  | 'INITIALIZED'
+  | 'CONTEXT_INJECTING'
+  | 'CONTEXT_INJECTED'
+  | 'PROMPT_COMPOSED'
+  | 'GENERATING'
+  | 'TOOL_EXECUTING'
+  | 'RETRYING'
+  | 'FALLBACKING'
+  | 'COMPLETING'
+  | 'COMPLETED'
+  | 'FAILED';
 ```
 
 ---
@@ -31,14 +39,22 @@ Adding a code is MINOR (union widening). Removing a code is MAJOR (breaking).
 
 ```typescript
 export type OrchestratorErrorCode =
-  | 'PROVIDER_RATE_LIMIT'       | 'PROVIDER_TIMEOUT'
-  | 'PROVIDER_UNAVAILABLE'      | 'PROVIDER_AUTH_FAILED'
+  | 'PROVIDER_RATE_LIMIT'
+  | 'PROVIDER_TIMEOUT'
+  | 'PROVIDER_UNAVAILABLE'
+  | 'PROVIDER_AUTH_FAILED'
   | 'PROVIDER_MALFORMED_RESPONSE'
-  | 'TOOL_EXECUTION_FAILED'     | 'TOOL_VALIDATION_FAILED'  | 'TOOL_NOT_FOUND'
-  | 'CONTEXT_LOAD_FAILED'       | 'CONTEXT_PROVIDER_FAILED'
-  | 'MAX_RETRIES_EXCEEDED'      | 'TOKEN_LIMIT_EXCEEDED'
-  | 'TIMEOUT_EXCEEDED'          | 'FALLBACK_EXHAUSTED'
-  | 'INVALID_STATE_TRANSITION'  | 'CONFIG_VALIDATION_FAILED';
+  | 'TOOL_EXECUTION_FAILED'
+  | 'TOOL_VALIDATION_FAILED'
+  | 'TOOL_NOT_FOUND'
+  | 'CONTEXT_LOAD_FAILED'
+  | 'CONTEXT_PROVIDER_FAILED'
+  | 'MAX_RETRIES_EXCEEDED'
+  | 'TOKEN_LIMIT_EXCEEDED'
+  | 'TIMEOUT_EXCEEDED'
+  | 'FALLBACK_EXHAUSTED'
+  | 'INVALID_STATE_TRANSITION'
+  | 'CONFIG_VALIDATION_FAILED';
 ```
 
 ---
@@ -77,7 +93,7 @@ export interface AIProvider {
 export interface ProviderCapabilities {
   streaming: boolean;
   toolCalling: boolean;
-  vision: boolean;          // documentation only — does not affect pipeline behavior
+  vision: boolean; // documentation only — does not affect pipeline behavior
   maxContextTokens: number; // input context limit; output limit via PromptRequest.maxTokens
 }
 
@@ -91,7 +107,7 @@ export interface PromptRequest {
 }
 
 export interface PromptResponse {
-  text: string;           // empty string when finishReason is 'tool_calls'
+  text: string; // empty string when finishReason is 'tool_calls'
   toolCalls?: ToolCall[];
   usage: TokenUsage;
   finishReason: 'stop' | 'tool_calls' | 'length';
@@ -107,16 +123,16 @@ Discriminated union — impossible states are unrepresentable at compile time.
 
 ```typescript
 export type Message =
-  | { role: 'system';    content: string | MessageContent[] }
-  | { role: 'user';      content: string | MessageContent[] }
+  | { role: 'system'; content: string | MessageContent[] }
+  | { role: 'user'; content: string | MessageContent[] }
   | { role: 'assistant'; content: string | MessageContent[]; toolCalls?: ToolCall[] }
-  | { role: 'tool';      content: string | MessageContent[]; toolCallId: string; name: string };
-  // role:'tool' — toolCallId and name are REQUIRED; links result to the originating ToolCall
+  | { role: 'tool'; content: string | MessageContent[]; toolCallId: string; name: string };
+// role:'tool' — toolCallId and name are REQUIRED; links result to the originating ToolCall
 
 export type MessageContent =
-  | { type: 'text';  text: string }
+  | { type: 'text'; text: string }
   | { type: 'image'; url: string; mimeType: string };
-  // url accepts data URIs (data:image/jpeg;base64,...) — adapter parses as needed
+// url accepts data URIs (data:image/jpeg;base64,...) — adapter parses as needed
 
 export type SystemMessage = Extract<Message, { role: 'system' }>;
 // Utility type — enforces ContextProvider output trust boundary at compile time
@@ -124,6 +140,7 @@ export type SystemMessage = Extract<Message, { role: 'system' }>;
 ```
 
 **Role rules:**
+
 - `run.input.prompt` → ALWAYS `role: 'user'` — never `role: 'system'`
 - `role: 'system'` → hardcoded hook instructions, ContextProvider output, profile systemPrompt only
 
@@ -147,14 +164,14 @@ export interface Tool extends ToolDefinition {
 }
 
 export interface ToolCall {
-  id: string;    // provider-assigned; adapter MUST generate (e.g. randomUUID) if provider omits
+  id: string; // provider-assigned; adapter MUST generate (e.g. randomUUID) if provider omits
   name: string;
   input: unknown;
 }
 
 export type ToolResult =
-  | { id: string; name: string; output: unknown;  error?: never }
-  | { id: string; name: string; output?: never;   error: ToolResultError };
+  | { id: string; name: string; output: unknown; error?: never }
+  | { id: string; name: string; output?: never; error: ToolResultError };
 // output and error are mutually exclusive — discriminated union
 // output MUST be JSON.stringify-serializable before entering the message pipeline
 

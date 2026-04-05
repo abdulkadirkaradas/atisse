@@ -1,4 +1,5 @@
 # ERROR TAXONOMY
+
 ## Error Hierarchy and Retry Decision Rules
 
 ---
@@ -13,7 +14,10 @@ export abstract class OrchestratorError extends Error {
   abstract readonly code: OrchestratorErrorCode;
   abstract readonly retryable: boolean;
 
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown,
+  ) {
     super(message);
     this.name = this.constructor.name;
     if (Error.captureStackTrace) {
@@ -72,32 +76,42 @@ export class ProviderRateLimitError extends OrchestratorError {
   constructor(
     message: string,
     public readonly retryAfterMs?: number, // use this delay if present; from Retry-After header
-    cause?: unknown
-  ) { super(message, cause); }
+    cause?: unknown,
+  ) {
+    super(message, cause);
+  }
 }
 
 export class ProviderTimeoutError extends OrchestratorError {
   readonly code = 'PROVIDER_TIMEOUT' as const;
   readonly retryable = true;
-  constructor(message: string, cause?: unknown) { super(message, cause); }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
 }
 
 export class ProviderUnavailableError extends OrchestratorError {
   readonly code = 'PROVIDER_UNAVAILABLE' as const;
   readonly retryable = true; // retries first, then triggers fallback
-  constructor(message: string, cause?: unknown) { super(message, cause); }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
 }
 
 export class ProviderAuthError extends OrchestratorError {
   readonly code = 'PROVIDER_AUTH_FAILED' as const;
   readonly retryable = false; // retrying will not fix an auth problem
-  constructor(message: string, cause?: unknown) { super(message, cause); }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
 }
 
 export class ProviderMalformedResponse extends OrchestratorError {
   readonly code = 'PROVIDER_MALFORMED_RESPONSE' as const;
   readonly retryable = false;
-  constructor(message: string, cause?: unknown) { super(message, cause); }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
 }
 
 // ── Tool Errors ───────────────────────────────────────────────
@@ -108,7 +122,10 @@ export class ProviderMalformedResponse extends OrchestratorError {
 export class ToolExecutionError extends OrchestratorError {
   readonly code = 'TOOL_EXECUTION_FAILED' as const;
   readonly retryable = true;
-  constructor(public readonly toolName: string, cause?: unknown) {
+  constructor(
+    public readonly toolName: string,
+    cause?: unknown,
+  ) {
     super(`Tool execution failed: ${toolName}`, cause);
   }
 }
@@ -118,8 +135,10 @@ export class ToolValidationError extends OrchestratorError {
   readonly retryable = false; // schema mismatch — retry will not fix
   constructor(
     public readonly toolName: string,
-    public readonly validationErrors: string[]
-  ) { super(`Tool input validation failed: ${toolName}`); }
+    public readonly validationErrors: string[],
+  ) {
+    super(`Tool input validation failed: ${toolName}`);
+  }
 }
 
 export class ToolNotFoundError extends OrchestratorError {
@@ -138,7 +157,10 @@ export class ToolNotFoundError extends OrchestratorError {
 export class ContextLoadError extends OrchestratorError {
   readonly code = 'CONTEXT_LOAD_FAILED' as const;
   readonly retryable = true;
-  constructor(public readonly providerId: string, cause?: unknown) {
+  constructor(
+    public readonly providerId: string,
+    cause?: unknown,
+  ) {
     super(`Context load failed: ${providerId}`, cause);
   }
 }
@@ -146,7 +168,10 @@ export class ContextLoadError extends OrchestratorError {
 export class ContextProviderError extends OrchestratorError {
   readonly code = 'CONTEXT_PROVIDER_FAILED' as const;
   readonly retryable = true;
-  constructor(public readonly providerId: string, cause?: unknown) {
+  constructor(
+    public readonly providerId: string,
+    cause?: unknown,
+  ) {
     super(`Context provider error: ${providerId}`, cause);
   }
 }
@@ -158,8 +183,10 @@ export class MaxRetriesExceededError extends OrchestratorError {
   readonly retryable = false;
   constructor(
     public readonly attempts: number,
-    public readonly lastError: OrchestratorError
-  ) { super(`Max retries exceeded after ${attempts} attempts`); }
+    public readonly lastError: OrchestratorError,
+  ) {
+    super(`Max retries exceeded after ${attempts} attempts`);
+  }
 }
 
 export class TokenLimitExceededError extends OrchestratorError {
@@ -167,7 +194,9 @@ export class TokenLimitExceededError extends OrchestratorError {
   readonly retryable = false;
   // NOTE: The kernel does NOT throw this error internally — prompt trimming handles overflow.
   // This class exists for use in beforeRun hooks where user code enforces custom limits.
-  constructor(message: string, cause?: unknown) { super(message, cause); }
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
 }
 
 export class TimeoutExceededError extends OrchestratorError {
@@ -183,8 +212,10 @@ export class FallbackExhaustedError extends OrchestratorError {
   readonly retryable = false;
   constructor(
     public readonly primaryError: OrchestratorError,
-    public readonly fallbackError: OrchestratorError
-  ) { super('Both primary and fallback providers failed'); }
+    public readonly fallbackError: OrchestratorError,
+  ) {
+    super('Both primary and fallback providers failed');
+  }
 }
 
 // ── Lifecycle Errors ──────────────────────────────────────────
@@ -193,9 +224,11 @@ export class InvalidStateTransitionError extends OrchestratorError {
   readonly code = 'INVALID_STATE_TRANSITION' as const;
   readonly retryable = false;
   constructor(
-    public readonly from: LifecycleState,        // imported via `import type` from interfaces.ts
-    public readonly to: LifecycleState | 'any'   // 'any' used when assertNotTerminal() fails
-  ) { super(`Invalid state transition: ${from} → ${to}`); }
+    public readonly from: LifecycleState, // imported via `import type` from interfaces.ts
+    public readonly to: LifecycleState | 'any', // 'any' used when assertNotTerminal() fails
+  ) {
+    super(`Invalid state transition: ${from} → ${to}`);
+  }
 }
 
 export class ConfigValidationError extends OrchestratorError {

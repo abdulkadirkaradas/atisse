@@ -3,6 +3,7 @@ description: Checklists and implementation templates for writing AIProvider, Mem
 ---
 
 # ADAPTER PATTERN
+
 ## How to Write Adapters for This Project
 
 ---
@@ -12,11 +13,11 @@ description: Checklists and implementation templates for writing AIProvider, Mem
 An adapter wraps an external system and exposes it through one of the kernel's interfaces.
 The kernel knows nothing about the external system — only the interface.
 
-| Type | Interface | Wraps |
-|---|---|---|
-| Provider Adapter | `AIProvider` | LLM provider SDK (OpenAI, Anthropic) |
-| Memory Adapter | `MemoryAdapter` | Storage (Redis, Postgres, in-memory) |
-| Context Provider | `ContextProvider` | Dynamic context source (RAG, DB) |
+| Type             | Interface         | Wraps                                |
+| ---------------- | ----------------- | ------------------------------------ |
+| Provider Adapter | `AIProvider`      | LLM provider SDK (OpenAI, Anthropic) |
+| Memory Adapter   | `MemoryAdapter`   | Storage (Redis, Postgres, in-memory) |
+| Context Provider | `ContextProvider` | Dynamic context source (RAG, DB)     |
 
 ---
 
@@ -103,6 +104,7 @@ async clear(sessionId: string): Promise<void> {
 - [ ] Errors thrown as `ContextLoadError` or `ContextProviderError` (both retryable)
 
 **ContextLoadError vs ContextProviderError:**
+
 - `ContextLoadError` — infrastructure/connectivity failure (storage backend unreachable)
 - `ContextProviderError` — business-logic failure (embedding service returned unexpected shape)
 
@@ -154,14 +156,17 @@ const searchTool: Tool = {
   execute: async (input: unknown): Promise<unknown> => {
     const parsed = searchSchema.safeParse(input);
     if (!parsed.success) {
-      throw new ToolValidationError('search', parsed.error.issues.map(i => i.message));
+      throw new ToolValidationError(
+        'search',
+        parsed.error.issues.map((i) => i.message),
+      );
     }
     try {
       return await searchAPI(parsed.data.query);
     } catch (error: unknown) {
       throw new ToolExecutionError('search', error);
     }
-  }
+  },
 };
 ```
 
@@ -178,6 +183,7 @@ packages/provider-{name}/
 ```
 
 ### package.json
+
 ```json
 {
   "name": "@atisse/provider-{name}",

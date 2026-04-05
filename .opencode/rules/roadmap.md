@@ -4,6 +4,7 @@ description: Load when scoping work against milestones, checking v1 exit criteri
 ---
 
 # ROADMAP
+
 ## Development Milestones — @atisse/core
 
 This roadmap is milestone-driven, not calendar-driven. Each milestone has explicit
@@ -17,14 +18,14 @@ exit criteria are fully satisfied — not before.
 
 ## Milestone Overview
 
-| Milestone | Focus | Blocker |
-|---|---|---|
-| M1 | Interface freeze + infrastructure | None |
-| M2 | Core kernel — `run()` end-to-end | M1 |
-| M3 | Streaming + OrchestratorProfile | M2 |
-| M4 | Official adapter set | M2 |
-| M5 | Quality gate | M2 + M3 + M4 |
-| M6 | First release | M5 |
+| Milestone | Focus                             | Blocker      |
+| --------- | --------------------------------- | ------------ |
+| M1        | Interface freeze + infrastructure | None         |
+| M2        | Core kernel — `run()` end-to-end  | M1           |
+| M3        | Streaming + OrchestratorProfile   | M2           |
+| M4        | Official adapter set              | M2           |
+| M5        | Quality gate                      | M2 + M3 + M4 |
+| M6        | First release                     | M5           |
 
 ---
 
@@ -56,6 +57,7 @@ Monorepo toolchain: pnpm workspaces, `tsconfig.base.json`, ESLint, Prettier, Vit
 tsup. GitHub Actions: lint + typecheck + test on every PR.
 
 **Exit criteria:**
+
 - `interfaces.ts` frozen — no required fields added or removed in v1
 - `MockProvider` passes its unit test suite without a working kernel
 - `isRetryable()` correctly classifies every error subtype
@@ -107,6 +109,7 @@ longer needed. Delegates all execution to `pipeline.ts`.
 No dependencies. Used as baseline in all integration tests.
 
 **Exit criteria:**
+
 - `orchestrator.run()` passes full integration test suite with `MockProvider`
   and `InMemoryAdapter`
 - Retry + fallback: FATAL vs RETRYABLE classification, backoff, fallback trigger tested
@@ -145,6 +148,7 @@ entry (ADR-017).
 mapping to `OrchestratorError` subtypes. `AbortSignal` forwarded to SDK.
 
 **Exit criteria:**
+
 - Streaming text, streaming + tool calls, streaming error termination tested
 - Profile override, hook merging, provider override tested
 - `profile.resolved` event emitted with correct override field list
@@ -178,11 +182,13 @@ General-purpose tools intended for independent publishing follow the
 `@atisse/tool-{name}` convention documented in `ADAPTER_PATTERN.md`.
 
 **Test requirement per adapter:**
+
 - Unit: error mapping, schema enforcement, interface contract compliance
 - Integration: adapter wired into `Orchestrator` — retry, hooks, state transitions,
   `RunOutput` shape verified
 
 **Exit criteria:**
+
 - All three adapters pass unit and integration test suites
 - `memory-redis` append semantics verified under concurrent `run()` calls
 - `RAGContextProvider` fail-fast path tested (ADR-015)
@@ -207,6 +213,7 @@ Stress — 100 concurrent `run()` calls: no state leaks, no cross-run interferen
 no memory growth.
 
 Security checklist:
+
 - No secrets in logs or error messages
 - `role: 'system'` never assigned to `input.prompt` in any code path
 - All tool `inputSchema` non-empty, `additionalProperties: false`
@@ -217,6 +224,7 @@ TypeDoc annotations complete on all exported symbols. API naming and config fiel
 reviewed for consistency.
 
 **Exit criteria:**
+
 - Coverage ≥ 70%, benchmark within threshold, stress test passes
 - Security checklist signed off
 - TypeDoc generates without errors
@@ -235,6 +243,7 @@ reviewed for consistency.
 SDK / this project), quick-start example.
 
 `examples/` — minimum 5 working examples:
+
 1. Basic run with OpenAI provider
 2. Retry and fallback
 3. Tool execution with schema validation
@@ -249,6 +258,7 @@ Version: `1.0.0` via Changesets. Published: `@atisse/core` + all official adapte
 GitHub Discussions enabled.
 
 **Exit criteria:**
+
 - `npm install @atisse/core` + any example works on a clean machine
 - All examples run without errors
 - TypeDoc site live
@@ -258,16 +268,16 @@ GitHub Discussions enabled.
 
 ## v2+ Boundary
 
-| Feature | Reason |
-|---|---|
-| Parallel tool execution | v1 is serial-only |
-| Typed tool generics | v2 candidate — `execute()` input/output is `unknown` in v1 |
-| Agent planning loop | Turns kernel into a framework |
-| Multi-agent communication | Different product |
-| Workflow DAG / step chaining | Pipeline engine scope |
-| Streaming + fallback combination | ADR-017 — deferred |
-| Configurable partial context failure | ADR-015 — deferred |
-| WASM / Rust core | Performance optimization track |
+| Feature                              | Reason                                                     |
+| ------------------------------------ | ---------------------------------------------------------- |
+| Parallel tool execution              | v1 is serial-only                                          |
+| Typed tool generics                  | v2 candidate — `execute()` input/output is `unknown` in v1 |
+| Agent planning loop                  | Turns kernel into a framework                              |
+| Multi-agent communication            | Different product                                          |
+| Workflow DAG / step chaining         | Pipeline engine scope                                      |
+| Streaming + fallback combination     | ADR-017 — deferred                                         |
+| Configurable partial context failure | ADR-015 — deferred                                         |
+| WASM / Rust core                     | Performance optimization track                             |
 
 ---
 

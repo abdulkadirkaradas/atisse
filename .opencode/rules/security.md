@@ -1,4 +1,5 @@
 # SECURITY
+
 ## Trust Boundaries, Threat Model, and Security Constraints
 
 This kernel sits between user code and external systems (LLM providers, storage, tools).
@@ -31,14 +32,14 @@ It does NOT make security policy decisions — that is the user's responsibility
 
 ## Kernel Responsibility vs. User Responsibility
 
-| Kernel Enforces | User / Adapter Responsibility |
-|---|---|
-| Trust boundary definitions | Content moderation |
-| Input validation API surface | Allowlist decisions |
-| Secret hygiene in core code | Authentication |
-| Session isolation contract | Authorization logic |
-| Tool hook surface | Sandboxing implementation |
-| Message role integrity | Prompt injection detection |
+| Kernel Enforces              | User / Adapter Responsibility |
+| ---------------------------- | ----------------------------- |
+| Trust boundary definitions   | Content moderation            |
+| Input validation API surface | Allowlist decisions           |
+| Secret hygiene in core code  | Authentication                |
+| Session isolation contract   | Authorization logic           |
+| Tool hook surface            | Sandboxing implementation     |
+| Message role integrity       | Prompt injection detection    |
 
 ---
 
@@ -59,7 +60,7 @@ logger.error('Authentication failed', { runId, providerId: this.id });
 throw new ProviderAuthError('Authentication failed — verify your API key');
 ```
 
-**Rule:** Error messages describe *what* went wrong, never *which value* caused it.
+**Rule:** Error messages describe _what_ went wrong, never _which value_ caused it.
 
 **`provider.id` is NOT a secret:** `AIProvider.id` (e.g. `"openai-gpt-4o"`) is configuration metadata — it is safe to include in event payloads, log entries, and error messages. The S-1 prohibition applies to credentials, not to provider identity strings.
 
@@ -72,13 +73,14 @@ User input MUST NEVER be injected as `role: 'system'`.
 
 ```typescript
 // FORBIDDEN — user input elevated to system role
-messages.push({ role: 'system', content: userInput });   // FORBIDDEN
+messages.push({ role: 'system', content: userInput }); // FORBIDDEN
 
 // CORRECT — user input is always user role
 messages.push({ role: 'user', content: input.prompt });
 ```
 
 `role: 'system'` is reserved exclusively for:
+
 - Hardcoded instructions added via `beforeGenerate` hooks (developer-authored, trusted)
 - `ContextProvider` outputs (trusted adapter content, see S-5)
 - `OrchestratorProfile.systemPrompt` (developer-configured)
@@ -98,7 +100,7 @@ even indirectly through string interpolation.
 export function createProfile(userPreference: string): OrchestratorProfile {
   return {
     name: 'assistant',
-    systemPrompt: `Be helpful. User style: ${userPreference}`,  // S-2 VIOLATION
+    systemPrompt: `Be helpful. User style: ${userPreference}`, // S-2 VIOLATION
   };
 }
 
@@ -106,7 +108,7 @@ export function createProfile(userPreference: string): OrchestratorProfile {
 export function createSupportProfile(vectorStore: VectorStore): OrchestratorProfile {
   return {
     name: 'support',
-    systemPrompt: 'You are a helpful customer support agent.',   // hardcoded — safe
+    systemPrompt: 'You are a helpful customer support agent.', // hardcoded — safe
     contextProviders: [new RAGContextProvider({ vectorStore })],
   };
 }
@@ -158,7 +160,7 @@ execute: async (input: unknown) => {
     throw new ToolExecutionError('fetch', new Error('URL not in allowlist'));
   }
   return fetch(parsed.url);
-}
+};
 ```
 
 #### S-3c: Tool Output Serialization
@@ -178,7 +180,7 @@ appears in session B's `load()` result.
 const key = `session:${sessionId}:messages`;
 
 // FORBIDDEN — no session scoping
-const key = `all_messages`;   // FORBIDDEN
+const key = `all_messages`; // FORBIDDEN
 ```
 
 The kernel verifies the return type (`Message[]`) but cannot verify isolation.
@@ -216,11 +218,11 @@ However, `input.prompt` MUST NOT be forwarded into a message with `role: 'system
 
 ```typescript
 // FORBIDDEN — user prompt elevated to system role via context provider
-return [{ role: 'system', content: input.prompt }];   // S-2 VIOLATION
+return [{ role: 'system', content: input.prompt }]; // S-2 VIOLATION
 
 // CORRECT — provider uses prompt for retrieval, returns its own content
 const docs = await vectorStore.search(input.prompt);
-return docs.map(doc => ({ role: 'system' as const, content: doc.text }));
+return docs.map((doc) => ({ role: 'system' as const, content: doc.text }));
 ```
 
 ---
@@ -243,11 +245,11 @@ throw new ProviderUnavailableError('Provider request failed after maximum retrie
 
 ### S-8: Dependency Security
 
-| Requirement | Enforcement |
-|---|---|
-| Every PR | `pnpm audit --audit-level=high` — HIGH/CRITICAL block merge |
-| Before release | `pnpm audit` — all levels must be clean |
-| Adding a dependency | PR description must include justification |
+| Requirement                 | Enforcement                                                      |
+| --------------------------- | ---------------------------------------------------------------- |
+| Every PR                    | `pnpm audit --audit-level=high` — HIGH/CRITICAL block merge      |
+| Before release              | `pnpm audit` — all levels must be clean                          |
+| Adding a dependency         | PR description must include justification                        |
 | `@atisse/core` runtime deps | Zero (except Zod) — any new dep requires architecture discussion |
 
 ---

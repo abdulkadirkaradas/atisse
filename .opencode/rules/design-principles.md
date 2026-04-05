@@ -4,6 +4,7 @@ description: Load when designing a new feature, evaluating structural decisions,
 ---
 
 # DESIGN PRINCIPLES
+
 ## Architectural Thinking and Structural Design Standards
 
 This document defines HOW WE THINK when designing features and making structural decisions.
@@ -14,6 +15,7 @@ Read this before designing a new feature, adding a dependency, or proposing an a
 ## SOLID Principles
 
 ### S — Single Responsibility
+
 Each class/module has ONE reason to change.
 
 ```typescript
@@ -32,6 +34,7 @@ class RedisMemoryAdapter { load(); save() { ... } }
 ```
 
 ### O — Open/Closed
+
 Open for extension, closed for modification. New features via adapters — not by editing core.
 
 ```typescript
@@ -52,6 +55,7 @@ class RAGContextProvider implements ContextProvider {
 ```
 
 ### L — Liskov Substitution
+
 Any `AIProvider` implementation must be swappable without changing behavior.
 
 ```typescript
@@ -63,26 +67,42 @@ Any `AIProvider` implementation must be swappable without changing behavior.
 ```
 
 ### I — Interface Segregation
+
 Interfaces are small and focused. Implementers only implement what they need.
 
 ```typescript
 // WRONG — fat interface forces unnecessary implementation
 interface UniversalAdapter {
-  generate(); stream(); loadMemory(); saveMemory(); search(); index();
+  generate();
+  stream();
+  loadMemory();
+  saveMemory();
+  search();
+  index();
 }
 
 // CORRECT — small, focused interfaces
-interface AIProvider { generate(); generateStream?(); }
-interface MemoryAdapter { load(); save(); clear(); }
-interface ContextProvider { provide(); }
+interface AIProvider {
+  generate();
+  generateStream?();
+}
+interface MemoryAdapter {
+  load();
+  save();
+  clear();
+}
+interface ContextProvider {
+  provide();
+}
 ```
 
 ### D — Dependency Inversion
+
 High-level modules (core) depend on abstractions (interfaces), not concretions (OpenAI SDK).
 
 ```typescript
 // WRONG — core depends on concrete implementation
-import OpenAI from 'openai';   // in core — FORBIDDEN
+import OpenAI from 'openai'; // in core — FORBIDDEN
 
 // CORRECT — core depends on interface
 import type { AIProvider } from './interfaces';
@@ -95,6 +115,7 @@ import type { AIProvider } from './interfaces';
 Every piece of knowledge has a single authoritative location.
 
 **Applies to:**
+
 - Policy defaults — defined once in `policies.ts`, referenced everywhere
 - Error codes — defined in error classes, never as magic strings
 - Interface types — defined in `interfaces.ts`, imported by adapters
@@ -116,6 +137,7 @@ await executeWithRetry(() => provider.generate(request), config.retry);
 ## Design Patterns Used in This Project
 
 ### Strategy Pattern
+
 Policy objects (`RetryPolicy`, `ToolPolicy`) are strategy objects. Swap behavior by swapping config.
 
 ```typescript
@@ -124,6 +146,7 @@ const conservativeRetry: RetryPolicy = { maxAttempts: 1, baseDelayMs: 0, ... };
 ```
 
 ### Adapter Pattern
+
 Provider, memory, and context adapters wrap external systems behind the kernel's interfaces.
 
 ```typescript
@@ -136,6 +159,7 @@ class OpenAIProvider implements AIProvider {
 ```
 
 ### Chain of Responsibility (Hooks)
+
 Lifecycle hooks form a chain. Each handler processes and passes to the next.
 
 ```typescript
@@ -149,6 +173,7 @@ async function runHooks<T>(hooks: LifecycleHook<T>[], context: T): Promise<T> {
 ```
 
 ### Observer Pattern (Event Bus)
+
 Event bus decouples event emission from event handling.
 
 ```typescript
@@ -157,6 +182,7 @@ orchestrator.on('run.completed', handler);
 ```
 
 ### Factory (Implicit)
+
 `new Orchestrator(config)` acts as a factory that wires all components based on config.
 
 ---
@@ -175,6 +201,7 @@ Layer 4 — surface:     orchestrator.ts
 ```
 
 **Rules:**
+
 - `orchestrator.ts` may import from `pipeline.ts` — allowed (L4 → L3)
 - `pipeline.ts` may import from `tool-controller.ts` — allowed (L3 → L2)
 - `tool-controller.ts` must NOT import from `pipeline.ts` — forbidden (L2 → L3, upward)
@@ -184,7 +211,7 @@ Layer 4 — surface:     orchestrator.ts
 ```typescript
 // WRONG — primitive layer reaching up to surface layer
 // packages/core/src/lifecycle.ts
-import { Orchestrator } from './orchestrator';   // FORBIDDEN — upward dependency
+import { Orchestrator } from './orchestrator'; // FORBIDDEN — upward dependency
 
 // CORRECT — primitive layer depends only on contracts
 // packages/core/src/lifecycle.ts

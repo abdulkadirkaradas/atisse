@@ -1,4 +1,5 @@
 # STATE MACHINE
+
 ## Lifecycle States and Valid Transitions
 
 ---
@@ -29,23 +30,23 @@ export type LifecycleState =
   | 'RETRYING'
   | 'FALLBACKING'
   | 'COMPLETING'
-  | 'COMPLETED'   // terminal
-  | 'FAILED';     // terminal
+  | 'COMPLETED' // terminal
+  | 'FAILED'; // terminal
 ```
 
-| State | Meaning |
-|---|---|
-| `INITIALIZED` | `run()` called, config validated, runId generated |
-| `CONTEXT_INJECTING` | ContextProvider(s) are being called |
-| `CONTEXT_INJECTED` | All context loaded, memory loaded |
-| `PROMPT_COMPOSED` | Message array assembled, ready to send |
-| `GENERATING` | Provider is being called |
-| `TOOL_EXECUTING` | LLM returned tool_calls, executing them |
-| `RETRYING` | Retryable error occurred, waiting before retry |
-| `FALLBACKING` | Max retries exhausted, switching to fallback provider |
-| `COMPLETING` | Saving memory, running afterRun hooks |
-| `COMPLETED` | Terminal — success |
-| `FAILED` | Terminal — unrecoverable error thrown |
+| State               | Meaning                                               |
+| ------------------- | ----------------------------------------------------- |
+| `INITIALIZED`       | `run()` called, config validated, runId generated     |
+| `CONTEXT_INJECTING` | ContextProvider(s) are being called                   |
+| `CONTEXT_INJECTED`  | All context loaded, memory loaded                     |
+| `PROMPT_COMPOSED`   | Message array assembled, ready to send                |
+| `GENERATING`        | Provider is being called                              |
+| `TOOL_EXECUTING`    | LLM returned tool_calls, executing them               |
+| `RETRYING`          | Retryable error occurred, waiting before retry        |
+| `FALLBACKING`       | Max retries exhausted, switching to fallback provider |
+| `COMPLETING`        | Saving memory, running afterRun hooks                 |
+| `COMPLETED`         | Terminal — success                                    |
+| `FAILED`            | Terminal — unrecoverable error thrown                 |
 
 ---
 
@@ -54,17 +55,17 @@ export type LifecycleState =
 ```typescript
 // Defined in lifecycle.ts — NOT exported (internal constant)
 const VALID_TRANSITIONS: Record<LifecycleState, LifecycleState[]> = {
-  INITIALIZED:        ['CONTEXT_INJECTING', 'FAILED'],
-  CONTEXT_INJECTING:  ['CONTEXT_INJECTED', 'RETRYING', 'FAILED'],
-  CONTEXT_INJECTED:   ['PROMPT_COMPOSED', 'FAILED'],
-  PROMPT_COMPOSED:    ['GENERATING', 'FAILED'],
-  GENERATING:         ['TOOL_EXECUTING', 'RETRYING', 'FALLBACKING', 'COMPLETING', 'FAILED'],
-  TOOL_EXECUTING:     ['GENERATING', 'RETRYING', 'FAILED'],
-  RETRYING:           ['GENERATING', 'CONTEXT_INJECTING', 'FALLBACKING', 'FAILED'],
-  FALLBACKING:        ['GENERATING', 'FAILED'],
-  COMPLETING:         ['COMPLETED'],
-  COMPLETED:          [],   // terminal — no transitions allowed
-  FAILED:             [],   // terminal — no transitions allowed
+  INITIALIZED: ['CONTEXT_INJECTING', 'FAILED'],
+  CONTEXT_INJECTING: ['CONTEXT_INJECTED', 'RETRYING', 'FAILED'],
+  CONTEXT_INJECTED: ['PROMPT_COMPOSED', 'FAILED'],
+  PROMPT_COMPOSED: ['GENERATING', 'FAILED'],
+  GENERATING: ['TOOL_EXECUTING', 'RETRYING', 'FALLBACKING', 'COMPLETING', 'FAILED'],
+  TOOL_EXECUTING: ['GENERATING', 'RETRYING', 'FAILED'],
+  RETRYING: ['GENERATING', 'CONTEXT_INJECTING', 'FALLBACKING', 'FAILED'],
+  FALLBACKING: ['GENERATING', 'FAILED'],
+  COMPLETING: ['COMPLETED'],
+  COMPLETED: [], // terminal — no transitions allowed
+  FAILED: [], // terminal — no transitions allowed
 };
 ```
 

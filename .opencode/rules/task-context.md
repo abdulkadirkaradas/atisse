@@ -1,4 +1,5 @@
 # TASK CONTEXT
+
 ## How the AI Agent Should Approach Tasks in This Project
 
 This document defines how to interpret task instructions, prioritize decisions,
@@ -23,18 +24,18 @@ and maintain consistency when implementing features in this codebase.
 
 When creating a new file, use this decision table:
 
-| What you're creating | Where it goes |
-|---|---|
-| Public contract (interface, type) | `packages/core/src/interfaces.ts` |
-| Error class | `packages/core/src/errors.ts` |
-| Core behavior (retry, hooks, events) | `packages/core/src/` |
-| Provider adapter | `packages/provider-{name}/src/index.ts` |
-| Memory adapter | `packages/memory-{name}/src/index.ts` |
-| Context provider | `packages/context-{name}/src/index.ts` |
-| Unit test | `packages/{name}/tests/unit/` |
-| Integration test | `packages/core/tests/integration/` |
-| Working example | `examples/{number}-{name}/` |
-| Documentation | `docs/` |
+| What you're creating                 | Where it goes                           |
+| ------------------------------------ | --------------------------------------- |
+| Public contract (interface, type)    | `packages/core/src/interfaces.ts`       |
+| Error class                          | `packages/core/src/errors.ts`           |
+| Core behavior (retry, hooks, events) | `packages/core/src/`                    |
+| Provider adapter                     | `packages/provider-{name}/src/index.ts` |
+| Memory adapter                       | `packages/memory-{name}/src/index.ts`   |
+| Context provider                     | `packages/context-{name}/src/index.ts`  |
+| Unit test                            | `packages/{name}/tests/unit/`           |
+| Integration test                     | `packages/core/tests/integration/`      |
+| Working example                      | `examples/{number}-{name}/`             |
+| Documentation                        | `docs/`                                 |
 
 ---
 
@@ -177,24 +178,24 @@ value separated by a dot. No free text. No deviations.
 
 ACTION values:
 
-| Value | Meaning |
-|---|---|
-| `REVIEW_REQUIRED` | Destination must inspect and decide |
+| Value               | Meaning                                            |
+| ------------------- | -------------------------------------------------- |
+| `REVIEW_REQUIRED`   | Destination must inspect and decide                |
 | `REVISION_REQUIRED` | Source must rework; destination identified the gap |
-| `ESCALATION` | Human intervention required |
-| `APPROVED` | Work accepted; destination may proceed |
-| `REJECTED` | Work not accepted; source must address findings |
+| `ESCALATION`        | Human intervention required                        |
+| `APPROVED`          | Work accepted; destination may proceed             |
+| `REJECTED`          | Work not accepted; source must address findings    |
 
 DOMAIN values:
 
-| Value | Scope |
-|---|---|
-| `CONTRACT` | `interfaces.ts` or frozen contracts |
-| `SECURITY` | Trust boundary violation — `SECURITY.md` |
-| `ARCHITECTURE` | ADR conflict or structural design decision |
-| `TEST_QUALITY` | Test sufficiency or coverage threshold |
-| `SCOPE` | v1 scope violation — `CONSTRAINTS.md` |
-| `RELEASE` | Versioning or publish decision |
+| Value             | Scope                                       |
+| ----------------- | ------------------------------------------- |
+| `CONTRACT`        | `interfaces.ts` or frozen contracts         |
+| `SECURITY`        | Trust boundary violation — `SECURITY.md`    |
+| `ARCHITECTURE`    | ADR conflict or structural design decision  |
+| `TEST_QUALITY`    | Test sufficiency or coverage threshold      |
+| `SCOPE`           | v1 scope violation — `CONSTRAINTS.md`       |
+| `RELEASE`         | Versioning or publish decision              |
 | `ITERATION_LIMIT` | Reserved — iteration cap reached; see below |
 
 **`iteration`** — Starts at 1 on the first handoff. Each subsequent handoff
@@ -218,16 +219,16 @@ flags[0] and approve or reject with rationale."`
 
 ### Routing Authority Matrix
 
-| Source | Permitted Destinations | Condition |
-|---|---|---|
-| SPBED | SPSA | Hard Stop triggered or task complete |
-| SPBED | USER | `ESCALATION.ITERATION_LIMIT` only |
-| SPSA | SPBED | Revision required |
-| SPSA | SPQAE | Test review required |
-| SPSA | USER | Approval needed or iteration limit |
-| SPQAE | SPBED | Test revision required |
-| SPQAE | SPSA | Architectural signal or standard gap |
-| SPQAE | USER | `ESCALATION.ITERATION_LIMIT` only |
+| Source | Permitted Destinations | Condition                            |
+| ------ | ---------------------- | ------------------------------------ |
+| SPBED  | SPSA                   | Hard Stop triggered or task complete |
+| SPBED  | USER                   | `ESCALATION.ITERATION_LIMIT` only    |
+| SPSA   | SPBED                  | Revision required                    |
+| SPSA   | SPQAE                  | Test review required                 |
+| SPSA   | USER                   | Approval needed or iteration limit   |
+| SPQAE  | SPBED                  | Test revision required               |
+| SPQAE  | SPSA                   | Architectural signal or standard gap |
+| SPQAE  | USER                   | `ESCALATION.ITERATION_LIMIT` only    |
 
 Any destination not listed for a given source is FORBIDDEN. An agent MUST NOT
 route outside its permitted destinations under any circumstances.

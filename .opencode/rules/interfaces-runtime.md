@@ -1,4 +1,5 @@
 # INTERFACES — RUNTIME CONTRACTS
+
 ## Frozen Public Contracts — v1 · Part 2 of 2
 
 **STATUS: FROZEN**
@@ -13,20 +14,20 @@ Source file: `packages/core/src/interfaces.ts`
 
 ```typescript
 export interface RetryPolicy {
-  maxAttempts: number;  // TOTAL attempts (1 initial + N-1 retries); maxAttempts:3 = 3 provider calls; default: 3
-  baseDelayMs: number;  // default: 500
-  maxDelayMs: number;   // default: 30_000
-  jitter: boolean;      // 30% partial jitter applied when true; default: true
+  maxAttempts: number; // TOTAL attempts (1 initial + N-1 retries); maxAttempts:3 = 3 provider calls; default: 3
+  baseDelayMs: number; // default: 500
+  maxDelayMs: number; // default: 30_000
+  jitter: boolean; // 30% partial jitter applied when true; default: true
 }
 
 export interface TimeoutPolicy {
   generateTimeoutMs: number; // per provider call; AbortSignal injected into PromptRequest.signal; default: 30_000
-  toolTimeoutMs: number;     // per Tool.execute(); enforced via Promise.race in ToolController; default: 10_000
-  totalTimeoutMs: number;    // entire run() wall-clock; enforced via Promise.race at top level; default: 60_000
+  toolTimeoutMs: number; // per Tool.execute(); enforced via Promise.race in ToolController; default: 10_000
+  totalTimeoutMs: number; // entire run() wall-clock; enforced via Promise.race at top level; default: 60_000
 }
 
 export interface ToolPolicy {
-  maxToolRounds: number;       // cumulative across entire run() — never resets on retry; default: 5; min: 1
+  maxToolRounds: number; // cumulative across entire run() — never resets on retry; default: 5; min: 1
   allowParallelTools: boolean; // MUST be false in v1; true → ConfigValidationError at construction; default: false
 }
 ```
@@ -38,34 +39,34 @@ export interface ToolPolicy {
 ```typescript
 export interface RunInput {
   prompt: string;
-  profile?: string;                         // Record key in OrchestratorConfig.profiles
+  profile?: string; // Record key in OrchestratorConfig.profiles
   // Missing key → ConfigValidationError at run() entry
   sessionId?: string;
-  stream?: boolean;                         // undefined treated as false
-  metadata?: Record<string, unknown>;       // pass-through; kernel does not read or modify
+  stream?: boolean; // undefined treated as false
+  metadata?: Record<string, unknown>; // pass-through; kernel does not read or modify
 }
 
 export interface RunOutput {
-  runId: string;                            // correlation key — present in all logs and events
-  text: string;                             // always string; "" when LLM produces only tool calls
-  toolResults: ToolResult[];                // all rounds combined; [] when no tools called
+  runId: string; // correlation key — present in all logs and events
+  text: string; // always string; "" when LLM produces only tool calls
+  toolResults: ToolResult[]; // all rounds combined; [] when no tools called
   usage: TokenUsage;
-  durationMs: number;                       // wall-clock time of entire run()
-  profile?: string;                         // active profile name; undefined if no profile used
-  metadata?: Record<string, unknown>;       // pass-through from RunInput.metadata
+  durationMs: number; // wall-clock time of entire run()
+  profile?: string; // active profile name; undefined if no profile used
+  metadata?: Record<string, unknown>; // pass-through from RunInput.metadata
 }
 
 // Discriminated union — each type carries exactly the fields it needs
 export type StreamChunk =
-  | { type: 'text';        delta: string }
-  | { type: 'tool_call';   toolCall: ToolCall }
+  | { type: 'text'; delta: string }
+  | { type: 'tool_call'; toolCall: ToolCall }
   | { type: 'tool_result'; toolResult: ToolResult }
-  | { type: 'done';        usage?: TokenUsage }
+  | { type: 'done'; usage?: TokenUsage }
   // usage optional — some providers do not report usage in streaming mode
-  | { type: 'error';       error: OrchestratorError };
-  // OrchestratorError imported via `import type` from errors.ts — no runtime circular dependency
-  // Stream always terminates with exactly one 'done' or 'error' chunk
-  // Consumers MUST handle unknown type values gracefully (forward-compatibility)
+  | { type: 'error'; error: OrchestratorError };
+// OrchestratorError imported via `import type` from errors.ts — no runtime circular dependency
+// Stream always terminates with exactly one 'done' or 'error' chunk
+// Consumers MUST handle unknown type values gracefully (forward-compatibility)
 ```
 
 ---
@@ -80,21 +81,28 @@ Returning `undefined` or `null` throws an internal error — always return the c
 export type LifecycleHook<TContext> = (context: TContext) => Promise<TContext> | TContext;
 
 export interface HookRegistry {
-  beforeRun:      ReadonlyArray<LifecycleHook<RunContext>>;
-  afterRun:       ReadonlyArray<LifecycleHook<AfterRunContext>>;
+  beforeRun: ReadonlyArray<LifecycleHook<RunContext>>;
+  afterRun: ReadonlyArray<LifecycleHook<AfterRunContext>>;
   beforeGenerate: ReadonlyArray<LifecycleHook<BeforeGenerateContext>>;
-  afterGenerate:  ReadonlyArray<LifecycleHook<AfterGenerateContext>>;
-  beforeTool:     ReadonlyArray<LifecycleHook<ToolContext>>;
-  afterTool:      ReadonlyArray<LifecycleHook<AfterToolContext>>;
+  afterGenerate: ReadonlyArray<LifecycleHook<AfterGenerateContext>>;
+  beforeTool: ReadonlyArray<LifecycleHook<ToolContext>>;
+  afterTool: ReadonlyArray<LifecycleHook<AfterToolContext>>;
 }
 
-export interface RunContext             { input: RunInput; runId: string }
-export type     AfterRunContext        = RunContext & { output: RunOutput }
+export interface RunContext {
+  input: RunInput;
+  runId: string;
+}
+export type AfterRunContext = RunContext & { output: RunOutput };
 
-export interface BeforeGenerateContext { messages: Message[]; input: RunInput; runId: string }
+export interface BeforeGenerateContext {
+  messages: Message[];
+  input: RunInput;
+  runId: string;
+}
 // response is NOT available here — the provider has not been called yet
 
-export interface AfterGenerateContext  {
+export interface AfterGenerateContext {
   messages: Message[];
   response: PromptResponse;
   input: RunInput;
@@ -102,8 +110,12 @@ export interface AfterGenerateContext  {
 }
 // In streaming mode: called AFTER the 'done' chunk — response holds accumulated text and usage
 
-export interface ToolContext           { toolCall: ToolCall; input: RunInput; runId: string }
-export type     AfterToolContext       = ToolContext & { toolResult: ToolResult }
+export interface ToolContext {
+  toolCall: ToolCall;
+  input: RunInput;
+  runId: string;
+}
+export type AfterToolContext = ToolContext & { toolResult: ToolResult };
 ```
 
 ---
@@ -128,13 +140,13 @@ export interface Logger {
 
 ```typescript
 export interface OrchestratorConfig {
-  provider: AIProvider;                    // required
+  provider: AIProvider; // required
   fallbackProvider?: AIProvider;
-  systemPrompt?: string;                   // global system prompt; profile.systemPrompt replaces (not appends)
-  tools?: Tool[];                          // duplicate names → ConfigValidationError at construction
+  systemPrompt?: string; // global system prompt; profile.systemPrompt replaces (not appends)
+  tools?: Tool[]; // duplicate names → ConfigValidationError at construction
   contextProviders?: ContextProvider[];
   memoryAdapter?: MemoryAdapter;
-  retry?: Partial<RetryPolicy>;            // merged with defaults; omitted fields use defaults
+  retry?: Partial<RetryPolicy>; // merged with defaults; omitted fields use defaults
   timeout?: Partial<TimeoutPolicy>;
   toolPolicy?: Partial<ToolPolicy>;
   hooks?: Partial<HookRegistry>;
@@ -150,19 +162,19 @@ export interface OrchestratorConfig {
 
 ```typescript
 export interface OrchestratorProfile {
-  name: string;          // MUST equal its Record key in OrchestratorConfig.profiles
-  description?: string;  // documentation only — not used by the pipeline
-  provider?: AIProvider;              // REPLACES base provider
+  name: string; // MUST equal its Record key in OrchestratorConfig.profiles
+  description?: string; // documentation only — not used by the pipeline
+  provider?: AIProvider; // REPLACES base provider
   fallbackProvider?: AIProvider;
-  systemPrompt?: string;              // REPLACES base systemPrompt (not concatenated)
-  retry?: Partial<RetryPolicy>;       // deep-merged with base (profile keys override matching base keys)
+  systemPrompt?: string; // REPLACES base systemPrompt (not concatenated)
+  retry?: Partial<RetryPolicy>; // deep-merged with base (profile keys override matching base keys)
   timeout?: Partial<TimeoutPolicy>;
   toolPolicy?: Partial<ToolPolicy>;
-  contextProviders?: ContextProvider[];  // REPLACES base list when defined ([] also replaces)
-  tools?: Tool[];                        // REPLACES base list when defined ([] also replaces)
+  contextProviders?: ContextProvider[]; // REPLACES base list when defined ([] also replaces)
+  tools?: Tool[]; // REPLACES base list when defined ([] also replaces)
   // tools: []        → replaces base with empty list (no tools active for this profile)
   // tools: undefined → base list is preserved unchanged
-  hooks?: Partial<HookRegistry>;         // CONCATENATED with base (base hooks execute first)
+  hooks?: Partial<HookRegistry>; // CONCATENATED with base (base hooks execute first)
 }
 ```
 
@@ -182,7 +194,7 @@ export class Orchestrator {
   // • duplicate tool names in the tools array
 
   run(input: RunInput & { stream?: false }): Promise<RunOutput>;
-  run(input: RunInput & { stream: true }):  Promise<AsyncIterable<StreamChunk>>;
+  run(input: RunInput & { stream: true }): Promise<AsyncIterable<StreamChunk>>;
   run(input: RunInput): Promise<RunOutput> | Promise<AsyncIterable<StreamChunk>>;
   // Third overload is the implementation signature — not part of the public API surface
   //
@@ -196,7 +208,7 @@ export class Orchestrator {
 
   on<T extends OrchestratorEvent['type']>(
     type: T,
-    listener: (event: Extract<OrchestratorEvent, { type: T }>) => void
+    listener: (event: Extract<OrchestratorEvent, { type: T }>) => void,
   ): () => void;
   // Returns an unsubscribe function — MUST be called when listener is no longer needed
   // Registering listeners inside per-request handlers without unsubscribing causes memory leaks
@@ -214,7 +226,7 @@ export interface EventBus {
   emit<T extends OrchestratorEvent>(event: T): void;
   on<T extends OrchestratorEvent['type']>(
     type: T,
-    listener: (event: Extract<OrchestratorEvent, { type: T }>) => void
+    listener: (event: Extract<OrchestratorEvent, { type: T }>) => void,
   ): () => void;
 }
 ```
@@ -225,26 +237,29 @@ export interface EventBus {
 
 ```typescript
 export type OrchestratorEvent =
-  | { type: 'run.started';        runId: string; timestamp: number; profile?: string }
-  | { type: 'run.completed';      runId: string; durationMs: number; usage: TokenUsage }
-  | { type: 'run.failed';         runId: string; error: OrchestratorError }
+  | { type: 'run.started'; runId: string; timestamp: number; profile?: string }
+  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage }
+  | { type: 'run.failed'; runId: string; error: OrchestratorError }
   // OrchestratorError instance — consumer can instanceof check; imported via `import type`
-  | { type: 'generate.started';   runId: string; messageCount: number }
+  | { type: 'generate.started'; runId: string; messageCount: number }
   | { type: 'generate.completed'; runId: string; durationMs: number; finishReason: string }
-  | { type: 'tool.called';        runId: string; toolName: string; round: number }
-  | { type: 'tool.completed';     runId: string; toolName: string; durationMs: number }
-  | { type: 'tool.failed';        runId: string; toolName: string; error: EventErrorPayload }
-  | { type: 'retry.attempt';      runId: string; attempt: number; reason: string; delayMs: number }
+  | { type: 'tool.called'; runId: string; toolName: string; round: number }
+  | { type: 'tool.completed'; runId: string; toolName: string; durationMs: number }
+  | { type: 'tool.failed'; runId: string; toolName: string; error: EventErrorPayload }
+  | { type: 'retry.attempt'; runId: string; attempt: number; reason: string; delayMs: number }
   | { type: 'fallback.triggered'; runId: string; reason: string }
-  | { type: 'context.loaded';     runId: string; providerId: string; messageCount: number }
-  | { type: 'context.failed';     runId: string; providerId: string; error: EventErrorPayload }
+  | { type: 'context.loaded'; runId: string; providerId: string; messageCount: number }
+  | { type: 'context.failed'; runId: string; providerId: string; error: EventErrorPayload }
   | {
       type: 'profile.resolved';
       runId: string;
       profileName: string;
       overrides: {
-        provider: boolean; tools: boolean; contextProviders: boolean;
-        systemPrompt: boolean; retry: boolean;
+        provider: boolean;
+        tools: boolean;
+        contextProviders: boolean;
+        systemPrompt: boolean;
+        retry: boolean;
       };
       hookCount: number;
     };

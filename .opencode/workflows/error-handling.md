@@ -3,6 +3,7 @@ description: How to throw, catch, map, and wrap errors correctly in adapters, ho
 ---
 
 # ERROR HANDLING
+
 ## How to Handle and Throw Errors Correctly
 
 ---
@@ -32,7 +33,7 @@ try {
     const status = (error as any).status;
     if (status === 429) throw new ProviderRateLimitError(error.message, undefined, error);
     if (status === 401) throw new ProviderAuthError(error.message, error);
-    if (status >= 500)  throw new ProviderUnavailableError(error.message, error);
+    if (status >= 500) throw new ProviderUnavailableError(error.message, error);
   }
   throw new ProviderUnavailableError('Unexpected error', error);
 }
@@ -41,7 +42,7 @@ try {
 throw new Error('Rate limited');
 
 // WRONG — swallowing the cause
-throw new ProviderRateLimitError('Rate limited');   // no cause = lost stack trace
+throw new ProviderRateLimitError('Rate limited'); // no cause = lost stack trace
 ```
 
 ### In Hooks
@@ -51,12 +52,14 @@ Hooks throw to abort execution:
 ```typescript
 // CORRECT — throw a typed error to abort with context
 hooks: {
-  beforeRun: [async (ctx) => {
-    if (isBlocked(ctx.input)) {
-      throw new PolicyError('Content blocked by moderation policy');
-    }
-    return ctx;
-  }]
+  beforeRun: [
+    async (ctx) => {
+      if (isBlocked(ctx.input)) {
+        throw new PolicyError('Content blocked by moderation policy');
+      }
+      return ctx;
+    },
+  ];
 }
 
 // WRONG — throwing plain Error (still works but loses type info)
@@ -72,7 +75,10 @@ execute: async (input: unknown) => {
   // Validate first — ToolValidationError is FATAL (won't retry)
   const parsed = mySchema.safeParse(input);
   if (!parsed.success) {
-    throw new ToolValidationError('calculator', parsed.error.errors.map(e => e.message));
+    throw new ToolValidationError(
+      'calculator',
+      parsed.error.errors.map((e) => e.message),
+    );
   }
 
   // Execution failure — ToolExecutionError is RETRYABLE
@@ -81,7 +87,7 @@ execute: async (input: unknown) => {
   } catch (error: unknown) {
     throw new ToolExecutionError('calculator', error);
   }
-}
+};
 ```
 
 ---
@@ -95,7 +101,7 @@ execute: async (input: unknown) => {
 try {
   result = await provider.generate(request);
 } catch (error: unknown) {
-  if (!isRetryable(error)) throw error;   // FATAL — rethrow immediately
+  if (!isRetryable(error)) throw error; // FATAL — rethrow immediately
   // retryable — handle in retry loop
   lastError = error;
 }

@@ -4,6 +4,7 @@ description: Load when writing any implementation code. Applies defensive progra
 ---
 
 # IMPLEMENTATION STANDARDS
+
 ## Day-to-Day Coding Rules and Safety Practices
 
 This document defines HOW WE WRITE code. Read this when producing any implementation —
@@ -24,7 +25,8 @@ Reject invalid state immediately. Do not let invalid data propagate deep into th
 // WRONG — validation buried inside logic
 async function compose(params: ComposeParams): Promise<Message[]> {
   const messages = buildMessages(params);
-  if (!params.userPrompt) {   // too late — already called buildMessages
+  if (!params.userPrompt) {
+    // too late — already called buildMessages
     throw new Error('Missing prompt');
   }
   return messages;
@@ -48,7 +50,7 @@ Invalid configuration must be caught at construction time, not at first `run()`.
 // WRONG — validation deferred to run()
 class Orchestrator {
   async run(input: RunInput) {
-    if (!this.config.provider) throw new Error('No provider');   // too late
+    if (!this.config.provider) throw new Error('No provider'); // too late
   }
 }
 
@@ -70,7 +72,7 @@ Adapter return values must be validated before use. Adapters can be third-party 
 ```typescript
 // WRONG — trusting adapter blindly
 const messages = await memoryAdapter.load(sessionId);
-messages.forEach(m => process(m));   // what if adapter returns null?
+messages.forEach((m) => process(m)); // what if adapter returns null?
 
 // CORRECT — validate adapter output
 const raw = await memoryAdapter.load(sessionId);
@@ -82,7 +84,7 @@ const messages = Array.isArray(raw) ? raw : [];
 Internal functions that require a specific state must assert it explicitly.
 
 ```typescript
-stateMachine.assertNotTerminal();   // throws InvalidStateTransitionError if terminal
+stateMachine.assertNotTerminal(); // throws InvalidStateTransitionError if terminal
 stateMachine.transition('GENERATING');
 ```
 
@@ -93,6 +95,7 @@ stateMachine.transition('GENERATING');
 High complexity is a maintenance liability. Enforce limits proactively.
 
 ### Cyclomatic Complexity
+
 Maximum cyclomatic complexity per function: **7**.
 If a function exceeds 7 decision paths, extract logic into smaller named functions.
 
@@ -122,6 +125,7 @@ function calculateDelay(error: OrchestratorError, attempt: number, policy: Retry
 ```
 
 ### Nesting Depth
+
 Maximum nesting depth: **3 levels**.
 Beyond 3 levels: extract to a named function or use early return.
 
@@ -148,12 +152,12 @@ async function run() {
 
 ### Size Limits
 
-| Unit | Maximum | Action if exceeded |
-|---|---|---|
-| Function body | 40 lines | Extract a named helper |
-| Class | 200 lines | Split into focused classes |
-| Public methods per class | 7 | Reconsider responsibilities |
-| Parameters per function | 3 | Use an options object |
+| Unit                     | Maximum   | Action if exceeded          |
+| ------------------------ | --------- | --------------------------- |
+| Function body            | 40 lines  | Extract a named helper      |
+| Class                    | 200 lines | Split into focused classes  |
+| Public methods per class | 7         | Reconsider responsibilities |
+| Parameters per function  | 3         | Use an options object       |
 
 ---
 
@@ -170,20 +174,20 @@ All execution state lives in local variables scoped to the call.
 ```typescript
 // WRONG — instance-level state causes cross-run contamination
 class Orchestrator {
-  private activeRunId: string;        // FORBIDDEN
+  private activeRunId: string; // FORBIDDEN
   private currentMessages: Message[]; // FORBIDDEN
 
   async run(input: RunInput) {
-    this.activeRunId = generateRunId();   // race condition with concurrent runs
+    this.activeRunId = generateRunId(); // race condition with concurrent runs
   }
 }
 
 // CORRECT — all state is local to run()
 class Orchestrator {
   async run(input: RunInput): Promise<RunOutput> {
-    const runId = generateRunId();                    // local — isolated per call
+    const runId = generateRunId(); // local — isolated per call
     const stateMachine = new LifecycleStateMachine(); // local
-    const messages: Message[] = [];                   // local
+    const messages: Message[] = []; // local
   }
 }
 ```
@@ -195,10 +199,10 @@ Reading from them concurrently is safe.
 
 ```typescript
 class Orchestrator {
-  private readonly config: ResolvedConfig;   // set once, never mutated
+  private readonly config: ResolvedConfig; // set once, never mutated
 
   async run(input: RunInput) {
-    const policy = this.config.retry;   // safe concurrent read
+    const policy = this.config.retry; // safe concurrent read
   }
 }
 ```
@@ -211,12 +215,12 @@ If a listener needs async work, it fires its own process and does not await it.
 ```typescript
 // WRONG — blocking async inside listener
 orchestrator.on('run.completed', async (event) => {
-  await database.save(event);   // blocks other listeners
+  await database.save(event); // blocks other listeners
 });
 
 // CORRECT — fire and forget, handle errors independently
 orchestrator.on('run.completed', (event) => {
-  database.save(event).catch(err => logger.error('Failed to save event', { err }));
+  database.save(event).catch((err) => logger.error('Failed to save event', { err }));
 });
 ```
 
@@ -243,22 +247,26 @@ async run(input: RunInput): Promise<RunOutput> {
 ## Code Quality Rules
 
 ### Functions
+
 - Max function length: 40 lines. Extract if longer.
 - Max parameters: 3. Use an options object if more are needed.
 - Functions do ONE thing. Name them as verbs: `loadContext()`, `validateInput()`.
 
 ### Classes
+
 - Max class length: 200 lines. Split if longer.
 - No more than 7 public methods per class.
 - Constructor must not contain business logic — only validation and assignment.
 
 ### Naming
+
 - Use intention-revealing names: `retryableError` not `err2`
 - Avoid abbreviations: `sessionId` is acceptable, `sid` is not
 - Boolean variables: `isRetryable`, `hasToolCalls`, `shouldFallback`
 - Collections use plural: `messages`, `hooks`, `tools`
 
 ### Immutability
+
 - Prefer `const` over `let`. Never use `var`.
 - Do not mutate function parameters. Return new objects.
 - Use `readonly` on all interface fields that should not be mutated externally.
@@ -266,7 +274,7 @@ async run(input: RunInput): Promise<RunOutput> {
 ```typescript
 // WRONG
 function addSystemMessage(messages: Message[], content: string) {
-  messages.push({ role: 'system', content });   // mutates input
+  messages.push({ role: 'system', content }); // mutates input
 }
 
 // CORRECT
@@ -276,11 +284,13 @@ function addSystemMessage(messages: Message[], content: string): Message[] {
 ```
 
 ### Async
+
 - All async operations use `async/await` — never `.then()/.catch()` chains
 - Always `await` promises — never fire-and-forget inside the pipeline
 - Use `Promise.all()` only when operations are truly independent
 
 ### Error Handling
+
 - Never catch and ignore errors silently
 - Catch only what you intend to handle
 - See `workflows/error-handling.md` for full rules
@@ -297,6 +307,7 @@ No circular dependencies — verified by ESLint import plugin.
 ```
 
 ### Import Order (enforced by ESLint)
+
 ```typescript
 // 1. Node built-ins
 import { randomUUID } from 'crypto';

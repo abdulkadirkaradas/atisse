@@ -4,6 +4,7 @@ description: Load when adding, modifying, or reviewing any exported symbol, publ
 ---
 
 # API DESIGN
+
 ## Public API Ergonomics and Contract Standards
 
 This project is an open-source library. Its public API is a product.
@@ -22,7 +23,7 @@ Advanced options are available but never required.
 ```typescript
 // Common case — works with zero knowledge of the full API
 const orchestrator = new Orchestrator({
-  provider: new OpenAIProvider({ apiKey })
+  provider: new OpenAIProvider({ apiKey }),
 });
 const result = await orchestrator.run({ prompt: 'Hello' });
 
@@ -58,9 +59,7 @@ An `OrchestratorError` message should explain the problem and imply the fix.
 throw new ConfigValidationError(['invalid value']);
 
 // CORRECT — actionable
-throw new ConfigValidationError([
-  'retry.maxAttempts must be a positive integer — received: -1'
-]);
+throw new ConfigValidationError(['retry.maxAttempts must be a positive integer — received: -1']);
 ```
 
 ### 4. Optional Configuration Uses Partial Types
@@ -71,14 +70,14 @@ Never require a user to specify the full policy when they only want to change on
 // WRONG — user must specify everything
 new Orchestrator({
   provider,
-  retry: { maxAttempts: 5, baseDelayMs: 500, maxDelayMs: 30_000, jitter: true }
+  retry: { maxAttempts: 5, baseDelayMs: 500, maxDelayMs: 30_000, jitter: true },
   //       ^ user only wanted maxAttempts: 5, forced to repeat all defaults
 });
 
 // CORRECT — Partial<RetryPolicy> with defaults merged internally
 new Orchestrator({
   provider,
-  retry: { maxAttempts: 5 }   // only override what matters
+  retry: { maxAttempts: 5 }, // only override what matters
 });
 ```
 
@@ -98,13 +97,13 @@ tools:   { maxToolRounds: 5, allowParallelTools: false }
 
 ## Naming Conventions for Public API
 
-| Element | Convention | Example |
-|---|---|---|
-| Classes | PascalCase, noun | `Orchestrator`, `OpenAIProvider` |
-| Interfaces | PascalCase, noun | `AIProvider`, `RetryPolicy` |
-| Methods | camelCase, verb | `run()`, `generate()`, `provide()` |
-| Config fields | camelCase, noun | `maxAttempts`, `baseDelayMs` |
-| Event types | `noun.verb` (past tense) | `run.completed`, `tool.failed` |
+| Element       | Convention                  | Example                                        |
+| ------------- | --------------------------- | ---------------------------------------------- |
+| Classes       | PascalCase, noun            | `Orchestrator`, `OpenAIProvider`               |
+| Interfaces    | PascalCase, noun            | `AIProvider`, `RetryPolicy`                    |
+| Methods       | camelCase, verb             | `run()`, `generate()`, `provide()`             |
+| Config fields | camelCase, noun             | `maxAttempts`, `baseDelayMs`                   |
+| Event types   | `noun.verb` (past tense)    | `run.completed`, `tool.failed`                 |
 | Error classes | PascalCase, ends in `Error` | `ProviderAuthError`, `MaxRetriesExceededError` |
 
 ---
@@ -185,7 +184,7 @@ Internal implementation details must not be exported.
 
 ```typescript
 // WRONG — exporting internal utilities
-export { runHooks } from './hooks';           // internal utility
+export { runHooks } from './hooks'; // internal utility
 export { VALID_TRANSITIONS } from './lifecycle'; // internal constant
 
 // CORRECT — only export the public API

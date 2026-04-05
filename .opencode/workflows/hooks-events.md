@@ -1,19 +1,20 @@
 # HOOKS AND EVENTS
+
 ## Lifecycle Hooks vs Event Bus — Two Different Contracts
 
 ---
 
 ## The Core Difference
 
-| | Lifecycle Hook | Event Bus |
-|---|---|---|
-| **Execution model** | Serial, awaited | Fire-and-forget |
-| **Blocks pipeline** | YES | NO |
-| **Can stop execution** | YES — throw to abort | NO — errors swallowed |
-| **Can modify context** | YES — return new context | NO |
-| **Purpose** | Interception, validation, transformation | Observation, telemetry, logging |
-| **Order guaranteed** | YES — registration order | YES — but outcome doesn't matter |
-| **Where registered** | `OrchestratorConfig.hooks` | `orchestrator.on(type, fn)` |
+|                        | Lifecycle Hook                           | Event Bus                        |
+| ---------------------- | ---------------------------------------- | -------------------------------- |
+| **Execution model**    | Serial, awaited                          | Fire-and-forget                  |
+| **Blocks pipeline**    | YES                                      | NO                               |
+| **Can stop execution** | YES — throw to abort                     | NO — errors swallowed            |
+| **Can modify context** | YES — return new context                 | NO                               |
+| **Purpose**            | Interception, validation, transformation | Observation, telemetry, logging  |
+| **Order guaranteed**   | YES — registration order                 | YES — but outcome doesn't matter |
+| **Where registered**   | `OrchestratorConfig.hooks`               | `orchestrator.on(type, fn)`      |
 
 ---
 
@@ -32,25 +33,25 @@ type LifecycleHook<TContext> = (context: TContext) => Promise<TContext> | TConte
 
 ```typescript
 hooks: {
-  beforeRun:      ReadonlyArray<LifecycleHook<RunContext>>
-    // RunContext = { input: RunInput, runId: string }
+  beforeRun: ReadonlyArray<LifecycleHook<RunContext>>;
+  // RunContext = { input: RunInput, runId: string }
 
-  beforeGenerate: ReadonlyArray<LifecycleHook<BeforeGenerateContext>>
-    // BeforeGenerateContext = { messages: Message[], input: RunInput, runId: string }
-    // NOTE: response is NOT available here — the provider has not been called yet
+  beforeGenerate: ReadonlyArray<LifecycleHook<BeforeGenerateContext>>;
+  // BeforeGenerateContext = { messages: Message[], input: RunInput, runId: string }
+  // NOTE: response is NOT available here — the provider has not been called yet
 
-  afterGenerate:  ReadonlyArray<LifecycleHook<AfterGenerateContext>>
-    // AfterGenerateContext = { messages: Message[], response: PromptResponse, input: RunInput, runId: string }
-    // Streaming: called AFTER the 'done' chunk — response holds accumulated text and usage
+  afterGenerate: ReadonlyArray<LifecycleHook<AfterGenerateContext>>;
+  // AfterGenerateContext = { messages: Message[], response: PromptResponse, input: RunInput, runId: string }
+  // Streaming: called AFTER the 'done' chunk — response holds accumulated text and usage
 
-  beforeTool:     ReadonlyArray<LifecycleHook<ToolContext>>
-    // ToolContext = { toolCall: ToolCall, input: RunInput, runId: string }
+  beforeTool: ReadonlyArray<LifecycleHook<ToolContext>>;
+  // ToolContext = { toolCall: ToolCall, input: RunInput, runId: string }
 
-  afterTool:      ReadonlyArray<LifecycleHook<AfterToolContext>>
-    // AfterToolContext = ToolContext & { toolResult: ToolResult }
+  afterTool: ReadonlyArray<LifecycleHook<AfterToolContext>>;
+  // AfterToolContext = ToolContext & { toolResult: ToolResult }
 
-  afterRun:       ReadonlyArray<LifecycleHook<AfterRunContext>>
-    // AfterRunContext = RunContext & { output: RunOutput }
+  afterRun: ReadonlyArray<LifecycleHook<AfterRunContext>>;
+  // AfterRunContext = RunContext & { output: RunOutput }
 }
 ```
 
@@ -90,8 +91,8 @@ hooks: {
         throw new TokenLimitExceededError('Prompt exceeds maximum length');
       }
       return ctx;
-    }
-  ]
+    },
+  ];
 }
 
 // USE CASE 2: Prompt augmentation
@@ -103,21 +104,24 @@ hooks: {
       ...ctx,
       messages: [
         ...ctx.messages,
-        { role: 'system' as const, content: 'Always respond in valid JSON.' } // hardcoded — safe
-      ]
-    })
-  ]
+        { role: 'system' as const, content: 'Always respond in valid JSON.' }, // hardcoded — safe
+      ],
+    }),
+  ];
 }
 
 // USE CASE 3: Response validation
 hooks: {
   afterGenerate: [
     async (ctx) => {
-      try { JSON.parse(ctx.response.text); }
-      catch { throw new Error('LLM returned invalid JSON'); }
+      try {
+        JSON.parse(ctx.response.text);
+      } catch {
+        throw new Error('LLM returned invalid JSON');
+      }
       return ctx;
-    }
-  ]
+    },
+  ];
 }
 
 // USE CASE 4: Authorization — input.metadata available in ToolContext
@@ -128,8 +132,8 @@ hooks: {
         throw new Error('Unauthorized tool access');
       }
       return ctx;
-    }
-  ]
+    },
+  ];
 }
 ```
 
@@ -181,7 +185,11 @@ This does NOT use `.then()/.catch()` chains — async/await convention is preser
 const result = listener(event);
 if (result instanceof Promise) {
   void (async () => {
-    try { await result; } catch { /* silently swallow */ }
+    try {
+      await result;
+    } catch {
+      /* silently swallow */
+    }
   })();
 }
 ```
@@ -197,11 +205,15 @@ unsub(); // call when listener is no longer needed
 
 // WRONG — listener registered per-request, never removed
 app.post('/chat', async (req, res) => {
-  orchestrator.on('run.completed', (e) => { /* ... */ }); // MEMORY LEAK
+  orchestrator.on('run.completed', (e) => {
+    /* ... */
+  }); // MEMORY LEAK
 });
 
 // CORRECT — register once at startup
-orchestrator.on('run.completed', (e) => { metrics.record(e.usage); });
+orchestrator.on('run.completed', (e) => {
+  metrics.record(e.usage);
+});
 ```
 
 ### Event Use Cases

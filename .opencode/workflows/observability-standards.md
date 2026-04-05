@@ -1,4 +1,5 @@
 # OBSERVABILITY STANDARDS
+
 ## Logging, Structured Events, and Debuggability
 
 Every critical execution path in this project MUST be observable.
@@ -9,11 +10,11 @@ from logs and events alone, without attaching a debugger.
 
 ## The Three Pillars
 
-| Pillar | Mechanism | Purpose |
-|---|---|---|
-| **Logging** | `Logger` interface | Human-readable execution trace |
-| **Events** | `EventBus` | Machine-readable telemetry and metrics |
-| **Correlation** | `runId` | Link all logs and events from a single `run()` call |
+| Pillar          | Mechanism          | Purpose                                             |
+| --------------- | ------------------ | --------------------------------------------------- |
+| **Logging**     | `Logger` interface | Human-readable execution trace                      |
+| **Events**      | `EventBus`         | Machine-readable telemetry and metrics              |
+| **Correlation** | `runId`            | Link all logs and events from a single `run()` call |
 
 ---
 
@@ -34,26 +35,26 @@ logger.error('Provider failed', { runId, error: error.message, code: error.code 
 
 ### Log Levels — When to Use Each
 
-| Level | When to use | Example |
-|---|---|---|
-| `debug` | Internal state transitions, detailed flow | `State: GENERATING → TOOL_EXECUTING` |
-| `info` | Significant milestones in `run()` | `Run started`, `Tool executed`, `Run completed` |
-| `warn` | Recoverable issues, retry attempts | `Retry attempt 2/3`, `Fallback triggered` |
-| `error` | Unrecoverable failures | `Max retries exceeded`, `Provider auth failed` |
+| Level   | When to use                               | Example                                         |
+| ------- | ----------------------------------------- | ----------------------------------------------- |
+| `debug` | Internal state transitions, detailed flow | `State: GENERATING → TOOL_EXECUTING`            |
+| `info`  | Significant milestones in `run()`         | `Run started`, `Tool executed`, `Run completed` |
+| `warn`  | Recoverable issues, retry attempts        | `Retry attempt 2/3`, `Fallback triggered`       |
+| `error` | Unrecoverable failures                    | `Max retries exceeded`, `Provider auth failed`  |
 
 ### Required Log Points
 
 These points MUST produce a log entry. No exceptions.
 
 ```typescript
-logger.info('Run started',       { runId, profile, sessionId });
-logger.debug('Context loaded',   { runId, providerId, messageCount });
-logger.debug('Generating',       { runId, messageCount: messages.length, model: provider.id });
-logger.debug('Executing tool',   { runId, toolName, round });
-logger.warn('Retrying',          { runId, attempt, reason: error.code, delayMs });
-logger.warn('Fallback triggered',{ runId, reason: error.code });
-logger.info('Run completed',     { runId, durationMs, totalTokens: usage.total });
-logger.error('Run failed',       { runId, error: error.message, code: error.code });
+logger.info('Run started', { runId, profile, sessionId });
+logger.debug('Context loaded', { runId, providerId, messageCount });
+logger.debug('Generating', { runId, messageCount: messages.length, model: provider.id });
+logger.debug('Executing tool', { runId, toolName, round });
+logger.warn('Retrying', { runId, attempt, reason: error.code, delayMs });
+logger.warn('Fallback triggered', { runId, reason: error.code });
+logger.info('Run completed', { runId, durationMs, totalTokens: usage.total });
+logger.error('Run failed', { runId, error: error.message, code: error.code });
 ```
 
 ### Log Message Format Rules
@@ -96,11 +97,11 @@ eventBus.emit({ type: 'run.completed', runId, durationMs: 230, usage });
 
 Different events carry different error representations — use the correct type:
 
-| Event | Error field type | Reason |
-|---|---|---|
-| `run.failed` | `OrchestratorError` | Consumer needs `instanceof` check; actual thrown error |
-| `tool.failed` | `EventErrorPayload` | Serialized DTO — code, message, retryable |
-| `context.failed` | `EventErrorPayload` | Serialized DTO — code, message, retryable |
+| Event            | Error field type    | Reason                                                 |
+| ---------------- | ------------------- | ------------------------------------------------------ |
+| `run.failed`     | `OrchestratorError` | Consumer needs `instanceof` check; actual thrown error |
+| `tool.failed`    | `EventErrorPayload` | Serialized DTO — code, message, retryable              |
+| `context.failed` | `EventErrorPayload` | Serialized DTO — code, message, retryable              |
 
 `EventErrorPayload` is defined in `interfaces-core.md`. It is structurally similar to
 `ToolResultError` but semantically distinct — do not interchange them.
@@ -111,7 +112,7 @@ eventBus.emit({
   type: 'tool.failed',
   runId,
   toolName,
-  error: { code: error.code, message: error.message, retryable: error.retryable }
+  error: { code: error.code, message: error.message, retryable: error.retryable },
 });
 
 // context.failed — EventErrorPayload
@@ -119,7 +120,7 @@ eventBus.emit({
   type: 'context.failed',
   runId,
   providerId,
-  error: { code: error.code, message: error.message, retryable: error.retryable }
+  error: { code: error.code, message: error.message, retryable: error.retryable },
 });
 
 // run.failed — actual OrchestratorError instance
@@ -128,31 +129,39 @@ eventBus.emit({ type: 'run.failed', runId, error });
 
 ### Events vs Logs — Which to Use
 
-| Scenario | Use |
-|---|---|
-| Human-readable trace | Logger |
-| Metric (latency, token count, cost) | Event |
-| Alerting (retry spike, fallback) | Event |
-| Debug a specific run | Logger (filtered by runId) |
-| Both | Both — they are complementary |
+| Scenario                            | Use                           |
+| ----------------------------------- | ----------------------------- |
+| Human-readable trace                | Logger                        |
+| Metric (latency, token count, cost) | Event                         |
+| Alerting (retry spike, fallback)    | Event                         |
+| Debug a specific run                | Logger (filtered by runId)    |
+| Both                                | Both — they are complementary |
 
 ### Required Events
 
 ```typescript
-eventBus.emit({ type: 'run.started',        runId, timestamp: Date.now(), profile });
-eventBus.emit({ type: 'run.completed',      runId, durationMs, usage });
-eventBus.emit({ type: 'run.failed',         runId, error });
-eventBus.emit({ type: 'generate.started',   runId, messageCount });
+eventBus.emit({ type: 'run.started', runId, timestamp: Date.now(), profile });
+eventBus.emit({ type: 'run.completed', runId, durationMs, usage });
+eventBus.emit({ type: 'run.failed', runId, error });
+eventBus.emit({ type: 'generate.started', runId, messageCount });
 eventBus.emit({ type: 'generate.completed', runId, durationMs, finishReason });
-eventBus.emit({ type: 'tool.called',        runId, toolName, round });
-eventBus.emit({ type: 'tool.completed',     runId, toolName, durationMs });
-eventBus.emit({ type: 'tool.failed',        runId, toolName,
-  error: { code: error.code, message: error.message, retryable: error.retryable } });
-eventBus.emit({ type: 'retry.attempt',      runId, attempt, reason: error.code, delayMs });
+eventBus.emit({ type: 'tool.called', runId, toolName, round });
+eventBus.emit({ type: 'tool.completed', runId, toolName, durationMs });
+eventBus.emit({
+  type: 'tool.failed',
+  runId,
+  toolName,
+  error: { code: error.code, message: error.message, retryable: error.retryable },
+});
+eventBus.emit({ type: 'retry.attempt', runId, attempt, reason: error.code, delayMs });
 eventBus.emit({ type: 'fallback.triggered', runId, reason: error.code });
-eventBus.emit({ type: 'context.loaded',     runId, providerId, messageCount });
-eventBus.emit({ type: 'context.failed',     runId, providerId,
-  error: { code: error.code, message: error.message, retryable: error.retryable } });
+eventBus.emit({ type: 'context.loaded', runId, providerId, messageCount });
+eventBus.emit({
+  type: 'context.failed',
+  runId,
+  providerId,
+  error: { code: error.code, message: error.message, retryable: error.retryable },
+});
 ```
 
 ---

@@ -4,6 +4,7 @@ description: Load when writing TypeScript code. Applies naming conventions, type
 ---
 
 # TYPESCRIPT STYLE
+
 ## Language Conventions and Syntax Standards
 
 ---
@@ -11,6 +12,7 @@ description: Load when writing TypeScript code. Applies naming conventions, type
 ## TypeScript Configuration
 
 ### tsconfig.base.json (root)
+
 ```json
 {
   "compilerOptions": {
@@ -36,6 +38,7 @@ description: Load when writing TypeScript code. Applies naming conventions, type
 ```
 
 Key flags explained:
+
 - `strict: true` — enables all strict checks (required, non-negotiable)
 - `exactOptionalPropertyTypes` — `{ a?: string }` cannot be `{ a: undefined }`
 - `noUncheckedIndexedAccess` — array/object index access returns `T | undefined`
@@ -46,6 +49,7 @@ Key flags explained:
 ## Type Declarations
 
 ### Prefer `interface` over `type` for objects
+
 ```typescript
 // CORRECT — use interface for object shapes
 interface RetryPolicy {
@@ -59,6 +63,7 @@ type LifecycleHook<T> = (context: T) => Promise<T> | T;
 ```
 
 ### Use `type` for imports when the value is only used as a type
+
 ```typescript
 // Preferred for interface/type imports — enables type erasure
 import type { AIProvider, RunInput } from './interfaces';
@@ -68,6 +73,7 @@ import { ProviderRateLimitError } from './errors';
 ```
 
 ### Never use `any`
+
 ```typescript
 // WRONG
 function parseResponse(data: any): string { ... }
@@ -83,6 +89,7 @@ function wrap<T>(value: T): { data: T } { return { data: value }; }
 ```
 
 ### Readonly and Immutability
+
 ```typescript
 // Use readonly on interface fields that should not be mutated externally
 export interface AIProvider {
@@ -98,21 +105,21 @@ type HookList<T> = ReadonlyArray<LifecycleHook<T>>;
 
 ## Naming Conventions
 
-| Element | Convention | Example |
-|---|---|---|
-| Class | PascalCase | `LifecycleStateMachine` |
-| Interface | PascalCase | `AIProvider`, `RetryPolicy` |
-| Type alias | PascalCase | `LifecycleState`, `StreamChunk` |
-| Enum | PascalCase (avoid — use union types) | — |
-| Function | camelCase verb | `executeWithRetry()` |
-| Method | camelCase verb | `.generate()`, `.isTerminal()` |
-| Variable | camelCase noun | `retryPolicy`, `toolResults` |
-| Constant | SCREAMING_SNAKE | `VALID_TRANSITIONS`, `DEFAULT_RETRY` |
-| File | kebab-case | `lifecycle.ts`, `mock-provider.ts` |
-| Test file | `*.test.ts` | `orchestrator.test.ts` |
-| Generic type | Single uppercase or descriptive | `T`, `TContext`, `TInput` |
-| Boolean var | `is/has/should` prefix | `isRetryable`, `hasToolCalls` |
-| Private field | no underscore (use `private`) | `private client: OpenAI` |
+| Element       | Convention                           | Example                              |
+| ------------- | ------------------------------------ | ------------------------------------ |
+| Class         | PascalCase                           | `LifecycleStateMachine`              |
+| Interface     | PascalCase                           | `AIProvider`, `RetryPolicy`          |
+| Type alias    | PascalCase                           | `LifecycleState`, `StreamChunk`      |
+| Enum          | PascalCase (avoid — use union types) | —                                    |
+| Function      | camelCase verb                       | `executeWithRetry()`                 |
+| Method        | camelCase verb                       | `.generate()`, `.isTerminal()`       |
+| Variable      | camelCase noun                       | `retryPolicy`, `toolResults`         |
+| Constant      | SCREAMING_SNAKE                      | `VALID_TRANSITIONS`, `DEFAULT_RETRY` |
+| File          | kebab-case                           | `lifecycle.ts`, `mock-provider.ts`   |
+| Test file     | `*.test.ts`                          | `orchestrator.test.ts`               |
+| Generic type  | Single uppercase or descriptive      | `T`, `TContext`, `TInput`            |
+| Boolean var   | `is/has/should` prefix               | `isRetryable`, `hasToolCalls`        |
+| Private field | no underscore (use `private`)        | `private client: OpenAI`             |
 
 ---
 
@@ -128,11 +135,17 @@ async function loadContext(sessionId: string): Promise<Message[]> {
 
 // WRONG
 function loadContext(sessionId: string): Promise<Message[]> {
-  return memoryAdapter.load(sessionId).then(m => m).catch(e => { throw e; });
+  return memoryAdapter
+    .load(sessionId)
+    .then((m) => m)
+    .catch((e) => {
+      throw e;
+    });
 }
 ```
 
 ### Parallel Execution (use sparingly)
+
 ```typescript
 // Only when operations are truly independent AND sequential ordering has no meaning.
 // Context loading and memory loading are NOT candidates — they are sequential
@@ -146,6 +159,7 @@ const [userProfile, featureFlags] = await Promise.all([
 ```
 
 ### Async Iterables (for streaming)
+
 ```typescript
 // Use for-await-of for consuming AsyncIterable
 async function* generateStream(request: PromptRequest): AsyncIterable<StreamChunk> {
@@ -170,7 +184,7 @@ try {
     throw error;
   }
   if (error instanceof OrchestratorError) {
-    throw error;  // rethrow typed errors as-is
+    throw error; // rethrow typed errors as-is
   }
   // Unknown errors — wrap with context
   throw new ProviderUnavailableError('Unknown provider error', error);
@@ -185,7 +199,7 @@ try {
 // Use generics when the type flows through without transformation
 async function runHooks<TContext>(
   hooks: LifecycleHook<TContext>[],
-  context: TContext
+  context: TContext,
 ): Promise<TContext> {
   let ctx = context;
   for (const hook of hooks) {
@@ -195,10 +209,7 @@ async function runHooks<TContext>(
 }
 
 // Constrain generics when needed
-function mergePolicy<T extends Partial<RetryPolicy>>(
-  base: RetryPolicy,
-  override: T
-): RetryPolicy {
+function mergePolicy<T extends Partial<RetryPolicy>>(base: RetryPolicy, override: T): RetryPolicy {
   return { ...base, ...override };
 }
 ```
@@ -218,9 +229,7 @@ const updatedContext: RunContext = {
 const { maxAttempts, baseDelayMs, jitter } = retryPolicy;
 
 // Optional chaining for nullable access
-const retryAfter = error instanceof ProviderRateLimitError
-  ? error.retryAfterMs
-  : undefined;
+const retryAfter = error instanceof ProviderRateLimitError ? error.retryAfterMs : undefined;
 ```
 
 ---
@@ -234,7 +243,7 @@ Every TypeScript source file follows this structure:
 import { randomUUID } from 'crypto';
 
 // 2. External package imports (type-only preferred)
-import type { /* ... */ } from 'zod';
+import type {} from /* ... */ 'zod';
 
 // 3. Internal imports — types first, then values
 import type { AIProvider, RunInput, RunOutput } from './interfaces';
