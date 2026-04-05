@@ -9,5 +9,9 @@ export default defineConfig({
     ...baseConfig.test,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    typecheck: {
+      tsconfig: './tsconfig.test.json',
+    },
   },
+  cacheDir: '../../.vite/core',
 });
