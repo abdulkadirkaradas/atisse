@@ -42,10 +42,10 @@ basis. Treat loaded content as mandatory instructions that override defaults.
 @.opencode/workflows/sdlc.md
 
 ### Load when writing or reviewing tests — structure, MockProvider contract, coverage thresholds, required scenarios, error path coverage
-@.opencode/workflows/testing.md
+@.opencode/workflows/testing-standards.md
 
 ### Load when building a new provider, memory adapter, context provider, or tool adapter — checklists, templates, error mapping rules
-@.opencode/workflows/adapter.md
+@.opencode/workflows/adapter-pattern.md
 
 ### Load when adding lifecycle hooks or event bus listeners — contract differences, hook contexts, listener rules, decision guide
 @.opencode/workflows/hooks-events.md
@@ -54,7 +54,7 @@ basis. Treat loaded content as mandatory instructions that override defaults.
 @.opencode/workflows/error-handling.md
 
 ### Load when adding log statements, event emissions, or runId correlation points — levels, required points, debuggability rules
-@.opencode/workflows/observability.md
+@.opencode/workflows/observability-standards.md
 
 ---
 
