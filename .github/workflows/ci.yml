@@ -7,6 +7,10 @@ on:
       - develop
       - main
 
+# Force GitHub Actions to use Node 24 runtime to resolve deprecation warnings
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -16,26 +20,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1. Install pnpm (It will respect the packageManager field in package.json)
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # 2. Setup Node.js (Using modern Node 24 version)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
+      # 3. Install dependencies
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # 4. Quality Control and Tests
+      # Using scripts defined in your root package.json
       - name: Lint
-        run: pnpm --recursive lint
+        run: pnpm lint:all
 
       - name: Typecheck
-        run: pnpm --recursive typecheck
+        run: pnpm typecheck:all
 
       - name: Test
-        run: pnpm --recursive test
+        run: pnpm test
 
       - name: Test coverage
-        run: pnpm --recursive test:coverage
+        run: pnpm test:coverage
 
+      # 5. Documentation generation
       - name: TypeDoc
-        run: pnpm --recursive exec -- pnpm typedoc --out docs/api src/index.ts || true
+        run: pnpm docs
