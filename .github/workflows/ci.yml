@@ -23,8 +23,6 @@ jobs:
       # 1. Install pnpm (It will respect the packageManager field in package.json)
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       # 2. Setup Node.js (Using modern Node 24 version)
       - name: Setup Node.js
