@@ -1,2 +1,66 @@
-// @atisse/core — public surface
-// Full implementation begins with Phase 2 (interfaces.ts)
+// Public contracts — type exports
+export type {
+  AIProvider,
+  ProviderCapabilities,
+  PromptRequest,
+  PromptResponse,
+  Message,
+  MessageContent,
+  SystemMessage,
+  Tool,
+  ToolDefinition,
+  ToolCall,
+  ToolResult,
+  ToolResultError,
+  MemoryAdapter,
+  ContextProvider,
+  ContextProviderInput,
+  TokenUsage,
+  RetryPolicy,
+  TimeoutPolicy,
+  ToolPolicy,
+  RunInput,
+  RunOutput,
+  StreamChunk,
+  LifecycleHook,
+  HookRegistry,
+  RunContext,
+  AfterRunContext,
+  BeforeGenerateContext,
+  AfterGenerateContext,
+  ToolContext,
+  AfterToolContext,
+  Logger,
+  OrchestratorConfig,
+  OrchestratorProfile,
+  EventBus,
+  OrchestratorEvent,
+  EventErrorPayload,
+  LifecycleState,
+  OrchestratorErrorCode,
+} from './interfaces.js';
+
+// Error classes — users must be able to catch by type
+export {
+  OrchestratorError,
+  ProviderRateLimitError,
+  ProviderTimeoutError,
+  ProviderUnavailableError,
+  ProviderAuthError,
+  ProviderMalformedResponse,
+  ToolExecutionError,
+  ToolValidationError,
+  ToolNotFoundError,
+  ContextLoadError,
+  ContextProviderError,
+  MaxRetriesExceededError,
+  TokenLimitExceededError,
+  TimeoutExceededError,
+  FallbackExhaustedError,
+  InvalidStateTransitionError,
+  ConfigValidationError,
+  isRetryable,
+} from './errors.js';
+
+// State machine
+export { LifecycleStateMachine } from './lifecycle.js';
