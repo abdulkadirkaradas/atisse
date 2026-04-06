@@ -2,8 +2,9 @@
   "name": "@atisse/memory-inmemory",
   "version": "0.0.1",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "type": "module",
   "main": "./dist/index.js",
@@ -28,7 +29,7 @@
     "@atisse/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "vitest": "^2.0.0"
+    "@types/node": "^25.5.2",
+    "vitest": "^4.1.2"
   }
 }
