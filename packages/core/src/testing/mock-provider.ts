@@ -72,14 +72,20 @@ export class MockProvider implements AIProvider {
     }
 
     if ('error' in entry) {
-      throw entry.error;
+      return Promise.reject(entry.error);
+    }
+
+    // Infer finishReason from toolCalls if not explicitly provided
+    let finishReason = entry.finishReason ?? 'stop';
+    if (!entry.finishReason && entry.toolCalls && entry.toolCalls.length > 0) {
+      finishReason = 'tool_calls';
     }
 
     return Promise.resolve({
       text: entry.text,
       toolCalls: entry.toolCalls ?? [],
       usage: { prompt: 0, completion: 0, total: 0 },
-      finishReason: entry.finishReason ?? 'stop',
+      finishReason,
     });
   }
 
