@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --recursive lint
+
+      - name: Typecheck
+        run: pnpm --recursive typecheck
+
+      - name: Test
+        run: pnpm --recursive test
+
+      - name: Test coverage
+        run: pnpm --recursive test:coverage
+
+      - name: TypeDoc
+        run: pnpm --recursive exec -- pnpm typedoc --out docs/api src/index.ts || true
