@@ -37,7 +37,9 @@ jobs:
 
       # 4. Build Packages
       - name: Build Packages
-        run: pnpm build
+        run: |
+          pnpm --filter "@atisse/core" build
+          pnpm --filter "!@atisse/core" build
       # 5. Quality Control and Tests
       # Using scripts defined in your root package.json
       - name: Lint
