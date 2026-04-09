@@ -9,14 +9,17 @@
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs"
     },
     "./testing": {
       "import": "./dist/testing/mock-provider.js",
-      "types": "./dist/testing/mock-provider.d.ts"
+      "types": "./dist/testing/mock-provider.d.ts",
+      "require": "./dist/testing/mock-provider.cjs"
     }
   },
   "files": [
