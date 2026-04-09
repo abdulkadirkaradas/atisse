@@ -60,4 +60,4 @@ jobs:
 
       # 6. Documentation generation
       - name: TypeDoc
-        run: pnpm docs
+        run: pnpm run docs

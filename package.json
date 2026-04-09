@@ -14,7 +14,7 @@
     "test": "pnpm --recursive test",
     "test:coverage": "pnpm --recursive test:coverage",
     "build": "pnpm --recursive build",
-    "docs": "typedoc --out docs/api src/index.ts || true"
+    "docs": "typedoc --out docs/api packages/core/src/index.ts || true"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
