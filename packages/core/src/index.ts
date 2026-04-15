@@ -40,6 +40,9 @@ export type {
   OrchestratorErrorCode,
 } from './interfaces.js';
 
+// Orchestrator class
+export { Orchestrator } from './orchestrator.js';
+
 // Error classes — users must be able to catch by type
 export {
   OrchestratorError,
@@ -54,6 +57,7 @@ export {
   ContextLoadError,
   ContextProviderError,
   MaxRetriesExceededError,
+  MaxToolRoundsExceededError,
   TokenLimitExceededError,
   TimeoutExceededError,
   FallbackExhaustedError,
