@@ -182,6 +182,21 @@ export class MaxRetriesExceededError extends OrchestratorError {
 }
 
 /**
+ * Maximum tool rounds exceeded - not retryable.
+ * Thrown when tool execution rounds exceed the configured limit.
+ */
+export class MaxToolRoundsExceededError extends OrchestratorError {
+  readonly code = 'MAX_TOOL_ROUNDS_EXCEEDED' as const;
+  readonly retryable = false;
+  constructor(
+    public readonly rounds: number,
+    public readonly maxRounds: number,
+  ) {
+    super(`Tool round limit exceeded: ${rounds}/${maxRounds}`);
+  }
+}
+
+/**
  * Token limit exceeded - not retryable.
  * Note: Kernel does not throw this internally; exists for user hooks.
  */

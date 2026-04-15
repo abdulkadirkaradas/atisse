@@ -32,6 +32,7 @@ export type OrchestratorErrorCode =
   | 'CONTEXT_LOAD_FAILED'
   | 'CONTEXT_PROVIDER_FAILED'
   | 'MAX_RETRIES_EXCEEDED'
+  | 'MAX_TOOL_ROUNDS_EXCEEDED'
   | 'TOKEN_LIMIT_EXCEEDED'
   | 'TIMEOUT_EXCEEDED'
   | 'FALLBACK_EXHAUSTED'
@@ -209,6 +210,7 @@ export interface TimeoutPolicy {
 export interface ToolPolicy {
   maxToolRounds: number;
   allowParallelTools: boolean;
+  toolTimeoutMs: number; // per Tool.execute(); enforced via Promise.race in ToolController; default: 10_000
 }
 
 /**
