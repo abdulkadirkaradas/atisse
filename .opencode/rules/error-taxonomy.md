@@ -53,10 +53,11 @@ OrchestratorError
 │   └── ContextProviderError         retryable:true   code: CONTEXT_PROVIDER_FAILED
 │
 ├── PolicyError
-│   ├── MaxRetriesExceededError      retryable:false  code: MAX_RETRIES_EXCEEDED
+│   ├── MaxRetriesExceededError        retryable:false  code: MAX_RETRIES_EXCEEDED
+│   ├── MaxToolRoundsExceededError    retryable:false  code: MAX_TOOL_ROUNDS_EXCEEDED
 │   ├── TokenLimitExceededError      retryable:false  code: TOKEN_LIMIT_EXCEEDED
 │   ├── TimeoutExceededError         retryable:false  code: TIMEOUT_EXCEEDED
-│   └── FallbackExhaustedError       retryable:false  code: FALLBACK_EXHAUSTED
+│   └── FallbackExhaustedError        retryable:false  code: FALLBACK_EXHAUSTED
 │
 └── LifecycleError
     ├── InvalidStateTransitionError  retryable:false  code: INVALID_STATE_TRANSITION
@@ -204,6 +205,17 @@ export class TimeoutExceededError extends OrchestratorError {
   readonly retryable = false;
   constructor(public readonly timeoutMs: number) {
     super(`Execution timed out after ${timeoutMs}ms`);
+  }
+}
+
+export class MaxToolRoundsExceededError extends OrchestratorError {
+  readonly code = 'MAX_TOOL_ROUNDS_EXCEEDED' as const;
+  readonly retryable = false;
+  constructor(
+    public readonly rounds: number,
+    public readonly maxRounds: number,
+  ) {
+    super(`Tool round limit exceeded: ${rounds}/${maxRounds}`);
   }
 }
 
