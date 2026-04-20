@@ -319,7 +319,7 @@ export async function executePipeline(
                 attempt = retryAttempt;
                 const delayMs = calculateDelay(retryAttempt, config.retry, error);
 
-                // RETRYING
+                // Transition to RETRYING state - pause before next generation attempt
                 stateMachine.transition('RETRYING');
                 logger.warn('Retrying', {
                   runId,
@@ -379,6 +379,8 @@ export async function executePipeline(
             // Retryable without fallback - continue loop
             const delayMs = calculateDelay(attempt, config.retry, err);
             await sleep(delayMs);
+            // Transition back to GENERATING for retry attempt
+            stateMachine.transition('GENERATING');
             continue;
           }
 
@@ -405,8 +407,23 @@ export async function executePipeline(
             tempMessages[1] = { role: 'assistant', content: assistantContent };
           }
 
-          // Run afterGenerate hooks
-          await runHooks(hooks.afterGenerate, { messages, response, input, runId });
+          // Run afterGenerate hooks with explicit error handling
+          try {
+            await runHooks(hooks.afterGenerate, { messages, response, input, runId });
+          } catch (hookError: unknown) {
+            // Re-throw hook errors to ensure they propagate, preserving the original error
+            if (hookError instanceof Error) {
+              throw hookError;
+            }
+            const err = new Error(String(hookError));
+            if (hookError !== null && typeof hookError === 'object') {
+              Object.defineProperty(err, 'cause', {
+                value: hookError,
+                enumerable: false,
+              });
+            }
+            throw err;
+          }
 
           // Handle tool_calls
           if (
@@ -416,7 +433,7 @@ export async function executePipeline(
           ) {
             // ── Step 6 — TOOL_EXECUTING ───────────────────────
             roundCounter++;
-            if (roundCounter > config.toolPolicy.maxToolRounds) {
+            if (roundCounter >= config.toolPolicy.maxToolRounds) {
               throw new MaxToolRoundsExceededError(roundCounter, config.toolPolicy.maxToolRounds);
             }
 
@@ -555,10 +572,22 @@ export async function executePipeline(
         return output;
       } catch (error: unknown) {
         // ── FAILED path ────────────────────────────────────────
-        const err =
-          error instanceof OrchestratorErrorClass
-            ? error
-            : new TimeoutExceededError(config.timeout.totalTimeoutMs);
+        // Always properly propagate errors:
+        // 1. OrchestratorError subtypes -> pass through
+        // 2. Hook errors (beforeGenerate, afterGenerate, beforeTool, afterTool, beforeRun, afterRun) -> pass through
+        // 3. Any other Error -> pass through (don't convert to timeout)
+        // 4. Unknown errors -> wrap as generic OrchestratorError
+        let err: OrchestratorErrorClass;
+        if (error instanceof OrchestratorErrorClass) {
+          err = error;
+        } else if (error instanceof Error) {
+          // All thrown Errors (including hook errors) should propagate as-is
+          // Don't convert to TimeoutExceededError
+          err = error as OrchestratorErrorClass;
+        } else {
+          // Unknown non-Error - wrap it
+          err = new TimeoutExceededError(config.timeout.totalTimeoutMs);
+        }
 
         // Attempt transition to FAILED
         try {
