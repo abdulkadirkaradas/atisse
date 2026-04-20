@@ -159,7 +159,8 @@ the prose summary is for human readability only.
   "artifacts":      ["<file paths created or modified>"],
   "flags":          ["<open issues requiring attention — empty array if none>"],
   "required_action": "<single, specific action expected from the destination>",
-  "context_summary": "<brief paragraph — what destination needs to know to proceed>"
+  "context_summary": "<brief paragraph — what destination needs to know to proceed>",
+  "created_at":     "<ISO 8601 UTC timestamp — e.g. 2025-04-20T14:32:00Z>"
 }
 ```
 
@@ -215,6 +216,10 @@ MUST NOT be empty.
 exactly what to do next. Example: `"Review the interface change proposal in
 flags[0] and approve or reject with rationale."`
 
+**`created_at`** — ISO 8601 UTC timestamp generated at the moment the handoff
+is produced. Format: `YYYY-MM-DDTHH:MM:SSZ`. Example: `"2025-04-20T14:32:00Z"`.
+Never copied from a previous handoff — always reflects the current moment.
+
 ---
 
 ### Routing Authority Matrix
@@ -253,5 +258,6 @@ Task completed by SPBED, no flags, routed to SPSA for architectural review:
   "flags":          [],
   "required_action": "Review retry backoff implementation for ADR-007 compliance and approve or reject.",
   "context_summary": "Implemented exponential backoff with jitter in retry.ts. No interface changes were required. All existing tests pass. No Hard Stops were triggered during implementation."
+  "created_at":     "2025-04-20T14:32:00Z"
 }
 ```
