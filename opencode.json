@@ -12,6 +12,15 @@
     ".opencode/rules/index.md",
     ".opencode/rules/agent-safety.md"
   ],
+  "mcp": {
+    "handoff-package": {
+      "type": "local",
+      "command": ["npx", "tsx", ".opencode/tools/handoff-package/server.ts"]
+    }
+  },
+  "tools": {
+    "handoff-package": true
+  },
   "watcher": {
     "ignore": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"]
   },
