@@ -213,6 +213,15 @@ SPSA NEVER routes to SPQAE for anything other than test quality review.
 SPSA NEVER routes to USER for routine approvals — only for the conditions
 listed above.
 
+### Handoff Persistence
+
+**Before producing the handoff package prose**, call the `save_handoff` MCP tool:
+
+- `handoff_json` — the complete handoff package as a JSON string (schema v1.0)
+- `conversation_md` — the last assistant message by default; set `include_full_conversation: true` only when full history is explicitly needed
+- The tool will write files to `.opencode/handoffs/[task_label]/[task_label].json` and `.md`
+- If the tool call fails, include the error in `flags` and proceed with the prose handoff
+
 ### Handoff Package
 
 Every outgoing routing action MUST include a complete Handoff Package as
