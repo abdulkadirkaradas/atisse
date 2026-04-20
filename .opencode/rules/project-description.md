@@ -1,8 +1,3 @@
----
-trigger: model_decision
-description: Load when scoping a new feature, assessing whether a request fits the project identity, or explaining what the project does and explicitly does not do.
----
-
 # PROJECT DESCRIPTION
 
 ## AI Orchestration Kernel

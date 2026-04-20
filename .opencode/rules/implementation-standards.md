@@ -1,8 +1,3 @@
----
-trigger: model_decision
-description: Load when writing any implementation code. Applies defensive programming rules, cyclomatic complexity limits, concurrency safety constraints, and code quality standards.
----
-
 # IMPLEMENTATION STANDARDS
 
 ## Day-to-Day Coding Rules and Safety Practices

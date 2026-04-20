@@ -1,7 +1,3 @@
----
-description: How to throw, catch, map, and wrap errors correctly in adapters, hooks, tools, and user code. Covers cause preservation, event bus isolation, and message guidelines.
----
-
 # ERROR HANDLING
 
 ## How to Handle and Throw Errors Correctly

@@ -1,7 +1,3 @@
----
-description: Test structure, coverage thresholds, MockProvider API contract, required test scenarios, error path coverage, and security-relevant test cases for the kernel.
----
-
 # TESTING STANDARDS
 
 ## Test Strategy, Structure, and Coverage Requirements

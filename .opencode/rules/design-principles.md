@@ -1,8 +1,3 @@
----
-trigger: model_decision
-description: Load when designing a new feature, evaluating structural decisions, applying SOLID principles, or determining which architectural layer a new file or module belongs to.
----
-
 # DESIGN PRINCIPLES
 
 ## Architectural Thinking and Structural Design Standards

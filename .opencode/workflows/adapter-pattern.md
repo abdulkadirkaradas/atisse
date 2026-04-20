@@ -1,7 +1,3 @@
----
-description: Checklists and implementation templates for writing AIProvider, MemoryAdapter, ContextProvider, and Tool adapters. Includes error mapping rules and package structure.
----
-
 # ADAPTER PATTERN
 
 ## How to Write Adapters for This Project
