@@ -219,5 +219,5 @@ All output — completed or flagged — passes through SPSA first.
 Every outgoing routing action MUST include a complete Handoff Package as
 defined in `rules/task-context.md`. When originating a new task at
 iteration 1, generate a fresh UUID-v4 for `task_id` and construct a
-`task_label` following the `PROFILE*semantic-slug*NNNN` format. On all
+`task_label` following the `PROFILE-semantic_slug-NNNN` format. On all
 subsequent handoffs, preserve `task_id` and increment `iteration` by 1.

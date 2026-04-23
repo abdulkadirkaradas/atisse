@@ -150,7 +150,7 @@ the prose summary is for human readability only.
 {
   "schema_version": "1.0",
   "task_id":        "<uuid-v4>",
-  "task_label":     "<PROFILE>*<semantic-slug>*<random-4-digit-int>",
+  "task_label":     "<PROFILE>-<semantic_slug>-<random-4-digit-int>",
   "source":         "<SPSA | SPBED | SPQAE | SPDOE>",
   "destination":    "<SPSA | SPBED | SPQAE | SPDOE | USER>",
   "routing_reason": "<ACTION>.<DOMAIN>",
@@ -170,8 +170,8 @@ the prose summary is for human readability only.
 Never regenerated on subsequent handoffs. This is the stable identifier for
 orchestration tracing.
 
-**`task_label`** — Human-readable slug. Format: `PROFILE*semantic-slug*NNNN`.
-Example: `SPBED*implement-retry-backoff*3847`. Semantic slug uses lowercase
+**`task_label`** — Human-readable slug. Format: `PROFILE-semantic_slug-NNNN`.
+Example: `SPBED-implement_retry_backoff-3847`. Semantic slug uses lowercase
 kebab-case, max 5 words. Random suffix is a 4-digit integer.
 
 **`routing_reason`** — Composed of exactly one ACTION value and one DOMAIN
@@ -248,7 +248,7 @@ Task completed by SPBED, no flags, routed to SPSA for architectural review:
 {
   "schema_version": "1.0",
   "task_id":        "a3f8c1d2-7b4e-4f2a-9c6d-0e5b3f1a8d7c",
-  "task_label":     "SPBED*implement-retry-backoff*3847",
+  "task_label":     "SPBED-implement_retry_backoff-3847",
   "source":         "SPBED",
   "destination":    "SPSA",
   "routing_reason": "REVIEW_REQUIRED.ARCHITECTURE",
