@@ -68,7 +68,7 @@ export async function executePipeline(
   logger: Logger,
 ): Promise<RunOutput | AsyncIterable<StreamChunk>> {
   // ── Step 1 — INITIALIZED ───────────────────────────────────────────
-  // eslint-disable-next-line no-undef -- crypto is a global in Node.js 20+
+  // eslint-disable-next-line no-undef -- crypto is a global in Node.js 24+
   const runId = crypto.randomUUID();
   let roundCounter = 0;
   const tempMessages: [Message, Message] = [

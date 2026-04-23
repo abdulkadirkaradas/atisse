@@ -1,7 +1,7 @@
 # @atisse/core — Agent Instructions
 
 A lightweight, production-grade execution kernel for managing the LLM interaction
-lifecycle. TypeScript-first, Node.js 20+, monorepo under the `@atisse` namespace.
+lifecycle. TypeScript-first, Node.js 24+, monorepo under the `@atisse` namespace.
 
 ---
 

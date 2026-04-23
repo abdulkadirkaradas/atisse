@@ -434,7 +434,7 @@ Per `.opencode/workflows/sdlc.md` §CI/CD Pipeline.
 - `pnpm --recursive test`
 - `pnpm --recursive test:coverage`
 
-Node.js version: 24. Package manager: pnpm (latest stable).
+Node.js version: 24+. Package manager: pnpm (latest stable).
 
 **TypeDoc:** Added in M1 in soft-fail mode. Script: `typedoc --out docs/api src/index.ts || true` — the `|| true` ensures a non-zero TypeDoc exit code does not fail the CI step. The `|| true` suffix is removed in M5 when TypeDoc errors become blocking.
 
