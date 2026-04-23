@@ -27,7 +27,7 @@ const INDEX_FILE = 'index.json';
 const HandoffSchema = z.object({
   schema_version: z.literal('1.0'),
   task_id: z.string().uuid(),
-  task_label: z.string().regex(/^(SPSA|SPBED|SPQAE)\*[a-z0-9-]+\*\d{4}$/),
+  task_label: z.string().regex(/^(SPSA|SPBED|SPQAE)-[a-z0-9_-]+-\d{4}$/),
   source: z.enum(['SPSA', 'SPBED', 'SPQAE']),
   destination: z.enum(['SPSA', 'SPBED', 'SPQAE', 'USER']),
   routing_reason: z.string(),
