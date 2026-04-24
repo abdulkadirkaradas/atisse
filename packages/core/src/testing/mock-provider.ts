@@ -13,11 +13,19 @@ export type MockProviderEntry =
   | { text: string; toolCalls?: ToolCall[]; finishReason?: PromptResponse['finishReason'] }
   | { error: OrchestratorError };
 
+/**
+ * MockProviderEntry with explicit stream chunks for fine-grained streaming control.
+ */
+export type MockProviderStreamEntry = {
+  chunks: StreamChunk[];
+};
+
 export class MockProvider implements AIProvider {
   readonly id: string;
   readonly capabilities: ProviderCapabilities;
 
   private queue: MockProviderEntry[] = [];
+  private streamQueue: MockProviderStreamEntry[] = [];
   private _callCount = 0;
   private _history: PromptRequest[] = [];
 
@@ -33,7 +41,41 @@ export class MockProvider implements AIProvider {
 
   enqueue(entry: MockProviderEntry): this {
     this.queue.push(entry);
+    this.streamQueue.push(this._entryToStreamChunks(entry));
     return this;
+  }
+
+  enqueueStream(entry: MockProviderStreamEntry): this {
+    this.streamQueue.push(entry);
+    return this;
+  }
+
+  /**
+   * Convert entry to stream chunks for generateStream.
+   */
+  private _entryToStreamChunks(entry: MockProviderEntry): MockProviderStreamEntry {
+    if ('error' in entry) {
+      return { chunks: [{ type: 'error', error: entry.error }] };
+    }
+
+    const chunks: StreamChunk[] = [];
+
+    // Yield text chunks
+    for (const char of entry.text) {
+      chunks.push({ type: 'text', delta: char });
+    }
+
+    // Yield tool_call chunks
+    if (entry.toolCalls && entry.toolCalls.length > 0) {
+      for (const toolCall of entry.toolCalls) {
+        chunks.push({ type: 'tool_call', toolCall });
+      }
+    }
+
+    // Yield done
+    chunks.push({ type: 'done', usage: { prompt: 0, completion: 0, total: 0 } });
+
+    return { chunks };
   }
 
   callCount(): number {
@@ -54,6 +96,7 @@ export class MockProvider implements AIProvider {
 
   reset(): void {
     this.queue = [];
+    this.streamQueue = [];
     this._callCount = 0;
     this._history = [];
   }
@@ -93,34 +136,52 @@ export class MockProvider implements AIProvider {
     this._callCount++;
     this._history.push(request);
 
-    if (this.queue.length === 0) {
-      const error = new ProviderUnavailableError('MockProvider queue is empty');
+    // Use stream queue if available
+    if (this.streamQueue.length > 0) {
+      const entry = this.streamQueue.shift();
+      if (!entry) {
+        const error = new ProviderUnavailableError('MockProvider stream queue is empty');
+        return Promise.resolve({
+          async *[Symbol.asyncIterator]() {
+            await Promise.resolve();
+            yield { type: 'error', error };
+          },
+        });
+      }
+
+      // Check if it's an error entry (rejection)
+      if (entry.chunks.length === 1) {
+        const firstChunk = entry.chunks[0];
+        if (firstChunk && firstChunk.type === 'error') {
+          const err = firstChunk.error;
+          return Promise.reject(err);
+        }
+      }
+
       return Promise.resolve({
         async *[Symbol.asyncIterator]() {
-          await Promise.resolve();
-          yield { type: 'error', error };
+          for (const chunk of entry.chunks) {
+            await Promise.resolve();
+            yield chunk;
+          }
         },
       });
+    }
+
+    // Fallback to regular queue conversion
+    if (this.queue.length === 0) {
+      const error = new ProviderUnavailableError('MockProvider queue is empty');
+      return Promise.reject(error);
     }
 
     const entry = this.queue.shift();
     if (!entry) {
       const error = new ProviderUnavailableError('MockProvider queue is empty');
-      return Promise.resolve({
-        async *[Symbol.asyncIterator]() {
-          await Promise.resolve();
-          yield { type: 'error', error };
-        },
-      });
+      return Promise.reject(error);
     }
 
     if ('error' in entry) {
-      return Promise.resolve({
-        async *[Symbol.asyncIterator]() {
-          await Promise.resolve();
-          yield { type: 'error', error: entry.error };
-        },
-      });
+      return Promise.reject(entry.error);
     }
 
     return Promise.resolve({
@@ -129,7 +190,15 @@ export class MockProvider implements AIProvider {
           await Promise.resolve();
           yield { type: 'text', delta: char };
         }
-        yield { type: 'done' };
+
+        if (entry.toolCalls && entry.toolCalls.length > 0) {
+          for (const toolCall of entry.toolCalls) {
+            await Promise.resolve();
+            yield { type: 'tool_call', toolCall };
+          }
+        }
+
+        yield { type: 'done', usage: { prompt: 0, completion: 0, total: 0 } };
       },
     });
   }
