@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * MCP Server — Handoff Persistence Tool
- * Saves handoff packages to .opencode/handoffs/[task_label]/
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import * as z from 'zod';
+import { ZodError } from 'zod';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
@@ -20,33 +20,35 @@ const MAX_MD_SIZE = 1_000_000;
 const MAX_JSON_SIZE = 200_000;
 const INDEX_FILE = 'index.json';
 
+const SAFE_LABEL_REGEX = /^(SPSA|SPBED|SPQAE)-[a-z0-9_-]+-\d{4}$/;
+const SAFE_TOKEN_REGEX = /^[a-zA-Z0-9._-]+$/;
+
 // ─────────────────────────────────────────────────────────────────────────────
-// SCHEMA (UNCHANGED BEHAVIOR)
+// SCHEMA
 // ─────────────────────────────────────────────────────────────────────────────
 
 const HandoffSchema = z.object({
   schema_version: z.literal('1.0'),
   task_id: z.string().uuid(),
-  task_label: z.string().regex(/^(SPSA|SPBED|SPQAE)-[a-z0-9_-]+-\d{4}$/),
+  task_label: z.string().regex(SAFE_LABEL_REGEX, 'Invalid task_label format'),
   source: z.enum(['SPSA', 'SPBED', 'SPQAE']),
   destination: z.enum(['SPSA', 'SPBED', 'SPQAE', 'USER']),
-  routing_reason: z.string(),
-  iteration: z.number().int().min(1),
+  routing_reason: z.string().min(1).max(2000),
+  iteration: z.number().int().min(1).max(1000),
   status: z.enum(['completed', 'flagged', 'approved', 'rejected', 'needs_review']),
-  artifacts: z.array(z.string()),
-  flags: z.array(z.string()),
-  required_action: z.string(),
-  context_summary: z.string(),
-  created_at: z.string().datetime(),
+  artifacts: z.array(z.string().min(1).max(200).regex(SAFE_TOKEN_REGEX)).max(100),
+  flags: z.array(z.string().min(1).max(100).regex(SAFE_TOKEN_REGEX)).max(50),
+  required_action: z.string().min(1).max(5000),
+  context_summary: z.string().min(1).max(10000),
+  created_at: z.string().datetime({ offset: true }),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPERS (UNCHANGED LOGIC)
+// HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
 function resolveDir(): string {
   const envBase = process.env.OPENCODE_HANDOFF_DIR;
-
   if (envBase) return envBase;
 
   let dir = process.cwd();
@@ -61,15 +63,8 @@ function resolveDir(): string {
     dir = parent;
   }
 
-  // fallback: module-relative (last resort, not recommended)
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   return path.join(__dirname, '..', '..', '.opencode', 'handoffs');
-}
-
-function assertSafeLabel(label: string) {
-  if (label.includes('..') || label.includes('/') || label.includes('\\')) {
-    throw new Error('Invalid task_label');
-  }
 }
 
 async function atomicWrite(filePath: string, data: string) {
@@ -88,7 +83,7 @@ async function exists(p: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INDEX LAYER (UNCHANGED BEHAVIOR)
+// INDEX
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function loadIndex(baseDir: string) {
@@ -120,14 +115,14 @@ const server = new McpServer({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOOL: save_handoff (COMPATIBLE)
+// save_handoff
 // ─────────────────────────────────────────────────────────────────────────────
 
 server.registerTool(
   'save_handoff',
   {
     title: 'Save Handoff',
-    description: 'Stores validated handoff with atomic writes, versioning, and index',
+    description: 'Stores validated handoff with atomic writes',
     inputSchema: z.object({
       handoff_json: z.string(),
       conversation_md: z.string(),
@@ -136,9 +131,10 @@ server.registerTool(
     }),
   },
 
-  async (input, ctx) => {
+  async (input) => {
     try {
       const baseDir = resolveDir();
+      await fs.mkdir(baseDir, { recursive: true });
 
       if (input.handoff_json.length > MAX_JSON_SIZE) {
         throw new Error('handoff_json too large');
@@ -148,19 +144,42 @@ server.registerTool(
         throw new Error('conversation_md too large');
       }
 
-      let parsed = JSON.parse(input.handoff_json);
-      const handoff = HandoffSchema.parse(parsed);
+      let handoff;
 
-      assertSafeLabel(handoff.task_label);
+      try {
+        const parsed = JSON.parse(input.handoff_json);
+        handoff = HandoffSchema.parse(parsed);
+      } catch (err: any) {
+        if (err instanceof ZodError) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ type: 'validation_error', issues: err.issues }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
+        throw err;
+      }
+
       const safe = path.basename(handoff.task_label);
-
       const taskDir = path.join(baseDir, safe);
       await fs.mkdir(taskDir, { recursive: true });
+
+      const index = await loadIndex(baseDir);
+
+      if (index.by_task_id[handoff.task_id] && !input.allow_overwrite) {
+        return {
+          content: [{ type: 'text', text: 'ERROR: task_id already exists' }],
+          isError: true,
+        };
+      }
 
       let jsonPath = path.join(taskDir, `${safe}.json`);
       let mdPath = path.join(taskDir, `${safe}.md`);
 
-      // versioning (UNCHANGED LOGIC)
       if (!input.allow_overwrite) {
         let v = 1;
         while (await exists(jsonPath)) {
@@ -178,7 +197,6 @@ server.registerTool(
       await atomicWrite(jsonPath, JSON.stringify(handoff, null, 2));
       await atomicWrite(mdPath, md);
 
-      // index update (UNCHANGED BEHAVIOR)
       await updateIndex(baseDir, {
         task_id: handoff.task_id,
         task_label: handoff.task_label,
@@ -207,14 +225,13 @@ server.registerTool(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOOL: get_handoff (COMPATIBLE)
+// get_handoff
 // ─────────────────────────────────────────────────────────────────────────────
 
 server.registerTool(
   'get_handoff',
   {
     title: 'Get Handoff',
-    description: 'Fetch single handoff by task_id',
     inputSchema: z.object({
       task_id: z.string(),
       include_conversation: z.boolean().default(false),
@@ -249,14 +266,13 @@ server.registerTool(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOOL: list_handoffs (COMPATIBLE)
+// list_handoffs
 // ─────────────────────────────────────────────────────────────────────────────
 
 server.registerTool(
   'list_handoffs',
   {
     title: 'List Handoffs',
-    description: 'List all handoffs using index',
     inputSchema: z.object({
       status: z.enum(['completed', 'flagged', 'approved', 'rejected', 'needs_review']).optional(),
       source: z.enum(['SPSA', 'SPBED', 'SPQAE']).optional(),
