@@ -162,25 +162,23 @@ describe('MockProvider', () => {
       expect(done).toBe(true);
     });
 
-    it('yields error chunk for error entry', async () => {
-      provider.enqueue({ error: new ToolExecutionError('tool') });
-      const iterable = await provider.generateStream({ messages: [] });
+    it('throws ProviderUnavailableError for empty queue', async () => {
+      const provider = new MockProvider('test-stream');
+      // Reset to ensure empty queue
+      provider.reset();
 
-      for await (const chunk of iterable) {
-        if (chunk.type === 'error') {
-          expect(chunk.error).toBeInstanceOf(ToolExecutionError);
-        }
-      }
+      await expect(provider.generateStream({ messages: [] })).rejects.toBeInstanceOf(
+        ProviderUnavailableError,
+      );
     });
 
-    it('yields error chunk with ProviderUnavailableError for empty queue', async () => {
-      const iterable = await provider.generateStream({ messages: [] });
+    it('throws error entry as Promise rejection (D-M3-1: pre-stream error)', async () => {
+      provider.enqueue({ error: new ToolExecutionError('tool') });
 
-      for await (const chunk of iterable) {
-        if (chunk.type === 'error') {
-          expect(chunk.error).toBeInstanceOf(ProviderUnavailableError);
-        }
-      }
+      // D-M3-1: pre-stream errors are Promise rejections, not error chunks
+      await expect(provider.generateStream({ messages: [] })).rejects.toBeInstanceOf(
+        ToolExecutionError,
+      );
     });
   });
 });
