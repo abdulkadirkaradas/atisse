@@ -57,16 +57,19 @@ describe('Integration: Orchestrator Core Run', () => {
     });
 
     it('stream: true validates streaming capability before execution', async () => {
-      // Kernel validates streaming capability at run() entry but streaming execution is deferred to M3
       const provider = createProvider();
       provider.enqueue({ text: 'Hello world' });
 
       const orchestrator = new Orchestrator({ provider });
 
-      // stream: true validates provider.capabilities.streaming - validation passes with MockProvider
-      // Streaming execution will be implemented in M3
       const result = await orchestrator.run({ prompt: 'hi', stream: true });
-      expect((result as any).text).toBe('Hello world');
+      let fullText = '';
+      for await (const chunk of result as AsyncIterable<{ type: 'text'; delta: string } | { type: 'done' }>) {
+        if (chunk.type === 'text') {
+          fullText += chunk.delta;
+        }
+      }
+      expect(fullText).toBe('Hello world');
     });
   });
 
