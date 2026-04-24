@@ -5,56 +5,32 @@ lifecycle. TypeScript-first, Node.js 24+, monorepo under the `@atisse` namespace
 
 ---
 
-## Lazy Loading Instructions
+## Mandatory Pre-Task Reading
 
-CRITICAL: Load the files below ONLY when they are directly relevant to the current
-task. Do NOT preload all references. Use the Read tool to load on a need-to-know
-basis. Treat loaded content as mandatory instructions that override defaults.
+> **Note:** Agent profiles (`@spsa`, `@spbed`, `@spqae`) contain role-specific
+> reading sequences that extend but do not replace this list.
 
-### Load when throwing, catching, mapping, or classifying errors; implementing retry logic; evaluating whether an error is retryable or fatal
-@.opencode/rules/error-taxonomy.md
+Read these before starting ANY task, in order:
 
-### Load when working on lifecycle states, pipeline steps, state transitions, retry flow, fallback logic, or any code that touches LifecycleStateMachine
-@.opencode/rules/state-machine.md
+1. `rules/agent-safety.md` — hard stops, protected files, forbidden commands
+2. `rules/task-context.md` — task framing, file locations, decision order
+3. `rules/constraints.md` — forbidden patterns, v1 scope hard limits
+4. `rules/philosophy.md` — 7 principles; reject anything that violates them
+5. `rules/security.md` — trust boundaries, S-1 through S-8
 
-### Load when adding, modifying, or reviewing exported symbols, public methods, or interface fields; classifying breaking changes under SemVer
-@.opencode/rules/api-design.md
+## Conditional Pre-Task Reading
 
-### Load when designing a new feature, evaluating structural decisions, applying SOLID principles, or determining which layer a file belongs to
-@.opencode/rules/design-principles.md
+| When... | File |
+|---|---|
+| Any feature touching execution flow | `rules/architecture.md` |
+| Any interface or type change | `rules/interfaces-core.md` + `rules/interfaces-runtime.md` |
 
-### Load when writing any implementation code — defensive programming, complexity limits, concurrency safety, code quality standards
-@.opencode/rules/implementation-standards.md
+---
 
-### Load when writing TypeScript — naming conventions, type declarations, async patterns, import ordering, ESLint/Prettier standards
-@.opencode/rules/typescript-style.md
+## Lazy Load Directives
 
-### Load when scoping a new feature, assessing whether a request fits project identity, or explaining what the project does and does not do
-@.opencode/rules/project-description.md
-
-### Load when questioning an existing architectural choice, proposing a change that may conflict with a recorded decision, or evaluating a new ADR
-@.opencode/rules/decision-log.md
-
-### Load when scoping work against milestones, checking v1 exit criteria, or evaluating whether a feature belongs in the current phase
-@.opencode/rules/roadmap.md
-
-### Load for branching, commit conventions, pull request requirements, versioning with Changesets, CI/CD pipeline steps, definition of done
-@.opencode/workflows/sdlc.md
-
-### Load when writing or reviewing tests — structure, MockProvider contract, coverage thresholds, required scenarios, error path coverage
-@.opencode/workflows/testing-standards.md
-
-### Load when building a new provider, memory adapter, context provider, or tool adapter — checklists, templates, error mapping rules
-@.opencode/workflows/adapter-pattern.md
-
-### Load when adding lifecycle hooks or event bus listeners — contract differences, hook contexts, listener rules, decision guide
-@.opencode/workflows/hooks-events.md
-
-### Load when throwing, catching, or mapping errors in adapters, hooks, tools, or user code — cause preservation, message guidelines
-@.opencode/workflows/error-handling.md
-
-### Load when adding log statements, event emissions, or runId correlation points — levels, required points, debuggability rules
-@.opencode/workflows/observability-standards.md
+All other files are loaded on demand. Consult `rules/index.md` for the full
+routing table — which task triggers which file.
 
 ---
 
