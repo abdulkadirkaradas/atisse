@@ -36,6 +36,7 @@ import {
   ToolNotFoundError,
   ContextLoadError,
   MaxRetriesExceededError,
+  ConfigValidationError,
   OrchestratorError as OrchestratorErrorClass,
 } from './errors.js';
 
@@ -116,6 +117,7 @@ export async function executePipeline(
         contextProviders: originalProfile.contextProviders !== undefined,
         systemPrompt: originalProfile.systemPrompt !== undefined,
         retry: originalProfile.retry !== undefined,
+        toolPolicy: originalProfile.toolPolicy !== undefined,
       };
 
       // Calculate total hook count (base + profile)
@@ -649,6 +651,7 @@ async function* executeStreamingPipeline(
         contextProviders: originalProfile.contextProviders !== undefined,
         systemPrompt: originalProfile.systemPrompt !== undefined,
         retry: originalProfile.retry !== undefined,
+        toolPolicy: originalProfile.toolPolicy !== undefined,
       };
 
       const baseHooks = normalizeHookRegistry(config.hooks);
@@ -806,125 +809,109 @@ async function* executeStreamingPipeline(
           : null),
       };
 
-      let streamIterable: AsyncIterable<StreamChunk>;
-      try {
-        // Validated at run() entry: provider.generateStream exists when stream === true
-        if (!activeProvider.generateStream) {
-          throw new Error('Provider does not support streaming');
-        }
-        streamIterable = await activeProvider.generateStream(promptRequest);
-      } catch (error: unknown) {
-        const err =
-          error instanceof OrchestratorErrorClass
-            ? error
-            : new TimeoutExceededError(config.timeout.generateTimeoutMs);
+      // D-M3-1: Full retry loop with maxAttempts for streaming pre-stream errors
+      // (generateStream Promise rejection — not mid-stream chunk errors)
+      let attempt = 0;
+      let streamIterable: AsyncIterable<StreamChunk> | undefined;
 
-        if (isRetryable(err)) {
-          stateMachine.transition('RETRYING');
-          logger.warn('Retrying', {
-            runId,
-            attempt: 1,
-            reason: err.code,
-            delayMs: config.retry.baseDelayMs,
-          });
-
-          eventBus.emit({
-            type: 'retry.attempt',
-            runId,
-            attempt: 1,
-            reason: err.code,
-            delayMs: config.retry.baseDelayMs,
-          });
-
-          await sleep(config.retry.baseDelayMs);
-          stateMachine.transition('GENERATING');
-          continue;
-        }
-
-        yield { type: 'error', error: err };
+      while (true) {
         try {
-          stateMachine.transition('FAILED');
-        } catch {
-          // Already in terminal state
+          // Validated at run() entry: provider.generateStream exists when stream === true
+          if (!activeProvider.generateStream) {
+            throw new ConfigValidationError(['provider does not implement generateStream']);
+          }
+          streamIterable = await activeProvider.generateStream(promptRequest);
+          break; // Success - exit retry loop
+        } catch (error: unknown) {
+          const err: OrchestratorErrorClass = handleOrchestratorError(error, config);
+
+          // Non-retryable errors exit immediately
+          if (!isRetryable(err)) {
+            yield { type: 'error', error: err };
+            try {
+              stateMachine.transition('FAILED');
+            } catch {
+              // Already in terminal state
+            }
+            eventBus.emit({ type: 'run.failed', runId, error: err });
+            logger.error('Run failed', { runId, error: err.message, code: err.code });
+            return;
+          }
+
+          attempt++;
+
+          // Check if max attempts reached
+          if (attempt >= config.retry.maxAttempts) {
+            const maxRetriesErr = new MaxRetriesExceededError(attempt, err);
+            yield { type: 'error', error: maxRetriesErr };
+            try {
+              stateMachine.transition('FAILED');
+            } catch {
+              // Already in terminal state
+            }
+            eventBus.emit({ type: 'run.failed', runId, error: maxRetriesErr });
+            logger.error('Run failed', { runId, error: maxRetriesErr.message, code: maxRetriesErr.code });
+            return;
+          }
+
+          stateMachine.transition('RETRYING');
+          const delayMs = calculateDelay(attempt, config.retry, err);
+          logger.warn('Retrying', { runId, attempt, reason: err.code, delayMs });
+          eventBus.emit({ type: 'retry.attempt', runId, attempt, reason: err.code, delayMs });
+          await sleep(delayMs);
+          stateMachine.transition('GENERATING');
         }
-
-        eventBus.emit({
-          type: 'run.failed',
-          runId,
-          error: err,
-        });
-
-        logger.error('Run failed', {
-          runId,
-          error: err.message,
-          code: err.code,
-        });
-        return;
       }
 
-      // D-M3-2: Stream consumption with AbortSignal fallback
-      // The AbortSignal is already attached to the request (lines 804-806)
-      // and totalTimeoutMs wraps the entire execution
-      // For non-cooperative providers, we track progress and rely on total timeout
-
+      // D-M3-2: Stream consumption with timeout fallback
+      // Wrap stream consumption in Promise.race with generateTimeoutMs timeout
       let streamError: OrchestratorErrorClass | undefined;
 
-      try {
-        for await (const chunk of streamIterable) {
-          switch (chunk.type) {
-            case 'text':
-              accumulatedText += chunk.delta;
-              yield chunk;
-              break;
-
-            case 'tool_call':
-              pendingToolCalls.push(chunk.toolCall);
-              yield chunk;
-              break;
-
-            case 'done':
-              if (chunk.usage) {
-                accumulatedUsage.prompt = chunk.usage.prompt;
-                accumulatedUsage.completion = chunk.usage.completion;
-                accumulatedUsage.total = chunk.usage.total;
-              }
-              yield chunk;
-              break;
-
-            case 'error':
-              yield chunk;
+      // Consume stream and collect chunks (can be interrupted by timeout)
+      const chunks = await Promise.race([
+        (async () => {
+          const collected: StreamChunk[] = [];
+          for await (const chunk of streamIterable) {
+            collected.push(chunk);
+            if (chunk.type === 'error') {
               streamError = chunk.error;
-              break;
-
-            default:
-              yield chunk;
+            }
           }
-        }
-      } catch (error: unknown) {
-        // Handle iteration errors (e.g., AbortSignal timeout from provider that honors it)
-        const err =
-          error instanceof OrchestratorErrorClass
-            ? error
-            : new TimeoutExceededError(config.timeout.generateTimeoutMs);
-        yield { type: 'error', error: err };
-        try {
-          stateMachine.transition('FAILED');
-        } catch {
-          // Already in terminal state
-        }
+          return collected;
+        })(),
+        rejectAfter(config.timeout.generateTimeoutMs),
+      ]);
 
-        eventBus.emit({
-          type: 'run.failed',
-          runId,
-          error: err,
-        });
+      // Process collected chunks and yield to consumer
+      for (const chunk of chunks) {
+        switch (chunk.type) {
+          case 'text':
+            accumulatedText += chunk.delta;
+            yield chunk;
+            break;
 
-        logger.error('Run failed', {
-          runId,
-          error: err.message,
-          code: err.code,
-        });
-        return;
+          case 'tool_call':
+            pendingToolCalls.push(chunk.toolCall);
+            yield chunk;
+            break;
+
+          case 'done':
+            if (chunk.usage) {
+              accumulatedUsage.prompt = chunk.usage.prompt;
+              accumulatedUsage.completion = chunk.usage.completion;
+              accumulatedUsage.total = chunk.usage.total;
+            }
+            yield chunk;
+            break;
+
+          case 'error':
+            // streamError is already set above
+            yield chunk;
+            break;
+
+          default:
+            yield chunk;
+        }
       }
 
       // Handle stream error (mid-stream error chunk)

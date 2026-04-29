@@ -409,6 +409,7 @@ export type OrchestratorEvent =
         contextProviders: boolean;
         systemPrompt: boolean;
         retry: boolean;
+        toolPolicy: boolean;
       };
       hookCount: number;
     };
