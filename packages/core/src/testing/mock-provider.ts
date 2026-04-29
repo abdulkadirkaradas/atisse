@@ -9,6 +9,15 @@ import type {
 import { ProviderUnavailableError } from '../errors.js';
 import type { OrchestratorError } from '../errors.js';
 
+/**
+ * Failure injection configuration for MockProvider.
+ * Allows injecting errors on specific call counts.
+ */
+export interface MockProviderFailureConfig {
+  callIndex: number;
+  error: OrchestratorError;
+}
+
 export type MockProviderEntry =
   | { text: string; toolCalls?: ToolCall[]; finishReason?: PromptResponse['finishReason'] }
   | { error: OrchestratorError };
@@ -28,6 +37,7 @@ export class MockProvider implements AIProvider {
   private streamQueue: MockProviderStreamEntry[] = [];
   private _callCount = 0;
   private _history: PromptRequest[] = [];
+  private _failureInjections: MockProviderFailureConfig[] = [];
 
   constructor(id = 'mock-test') {
     this.id = id;
@@ -99,11 +109,48 @@ export class MockProvider implements AIProvider {
     this.streamQueue = [];
     this._callCount = 0;
     this._history = [];
+    this._failureInjections = [];
+  }
+
+  /**
+   * Inject a failure to be thrown on a specific call count (1-indexed).
+   * @param callIndex - The call number to inject failure (1 = first call, 2 = second call, etc.)
+   * @param error - The error to throw
+   */
+  failureOnCall(callIndex: number, error: OrchestratorError): this {
+    this._failureInjections.push({ callIndex, error });
+    return this;
+  }
+
+  /**
+   * Clear all failure injections.
+   */
+  clearFailures(): void {
+    this._failureInjections = [];
+  }
+
+  /**
+   * Check if a failure should be injected for the current call.
+   */
+  private _shouldInjectFailure(): OrchestratorError | undefined {
+    const nextCall = this._callCount + 1;
+    for (const config of this._failureInjections) {
+      if (config.callIndex === nextCall) {
+        return config.error;
+      }
+    }
+    return undefined;
   }
 
   generate(request: PromptRequest): Promise<PromptResponse> {
     this._callCount++;
     this._history.push(request);
+
+    // Check for injected failure
+    const injectedError = this._shouldInjectFailure();
+    if (injectedError) {
+      return Promise.reject(injectedError);
+    }
 
     if (this.queue.length === 0) {
       throw new ProviderUnavailableError('MockProvider queue is empty');
@@ -135,6 +182,12 @@ export class MockProvider implements AIProvider {
   generateStream(request: PromptRequest): Promise<AsyncIterable<StreamChunk>> {
     this._callCount++;
     this._history.push(request);
+
+    // Check for injected failure
+    const injectedError = this._shouldInjectFailure();
+    if (injectedError) {
+      return Promise.reject(injectedError);
+    }
 
     // Use stream queue if available
     if (this.streamQueue.length > 0) {
