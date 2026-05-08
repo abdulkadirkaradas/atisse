@@ -1,4 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type {
+  BeforeGenerateContext,
+  AfterGenerateContext,
+  RunContext,
+  AfterRunContext,
+  StreamChunk,
+} from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 
@@ -25,9 +32,9 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
       ],
     });
 
-    const afterGenerateHook = vi.fn(async () => {
+    const afterGenerateHook = vi.fn(async (ctx: AfterGenerateContext) => {
       callOrder.push('afterGenerate');
-      return {} as never;
+      return ctx;
     });
 
     const orchestrator = new Orchestrator({
@@ -68,9 +75,9 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
       ],
     });
 
-    const beforeGenerateHook = vi.fn(async () => {
+    const beforeGenerateHook = vi.fn(async (ctx: BeforeGenerateContext) => {
       callOrder.push('beforeGenerate');
-      return {} as any;
+      return ctx;
     });
 
     const orchestrator = new Orchestrator({
@@ -102,9 +109,9 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
       ],
     });
 
-    const afterRunHook = vi.fn(async () => {
+    const afterRunHook = vi.fn(async (ctx: AfterRunContext) => {
       callOrder.push('afterRun');
-      return {} as never;
+      return ctx;
     });
 
     const orchestrator = new Orchestrator({
@@ -113,7 +120,10 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
     });
 
     vi.runAllTimersAsync();
-    const result = (await orchestrator.run({ prompt: 'test', stream: true })) as AsyncIterable<any>;
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
 
     // Consume stream
     for await (const chunk of result) {
@@ -173,9 +183,9 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
       ],
     });
 
-    const beforeRunHook = vi.fn(async () => {
+    const beforeRunHook = vi.fn(async (ctx: RunContext) => {
       callOrder.push('beforeRun');
-      return {} as never;
+      return ctx;
     });
 
     const orchestrator = new Orchestrator({
@@ -184,7 +194,10 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
     });
 
     vi.runAllTimersAsync();
-    const result = (await orchestrator.run({ prompt: 'test', stream: true })) as AsyncIterable<any>;
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
 
     for await (const chunk of result) {
       if (chunk.type === 'text') {
