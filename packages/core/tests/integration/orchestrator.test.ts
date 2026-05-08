@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { OrchestratorConfig, Tool } from '../../src/interfaces.js';
+import type { AIProvider, OrchestratorConfig, Tool } from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import {
@@ -498,6 +498,45 @@ describe('Integration: Orchestrator Core Run', () => {
         provider,
         fallbackProvider: createProvider(),
       });
+
+      await expect(orchestrator.run({ prompt: 'test', stream: true })).rejects.toThrow(
+        ConfigValidationError,
+      );
+    });
+
+    it('stream: true + capabilities.streaming === false throws ConfigValidationError', async () => {
+      const provider = createProvider();
+      provider.capabilities.streaming = false;
+
+      const orchestrator = new Orchestrator({ provider });
+
+      await expect(orchestrator.run({ prompt: 'test', stream: true })).rejects.toThrow(
+        ConfigValidationError,
+      );
+    });
+
+    it('stream: true + generateStream === undefined throws ConfigValidationError', async () => {
+      // Create a provider without generateStream method
+      const noStreamProvider: AIProvider = {
+        id: 'no-stream-provider',
+        capabilities: {
+          streaming: true, // Capabilities say streaming is supported...
+          toolCalling: true,
+          vision: false,
+          maxContextTokens: 128_000,
+        },
+        // generateStream is intentionally omitted — undefined
+        async generate() {
+          return {
+            text: 'response',
+            toolCalls: [],
+            usage: { prompt: 0, completion: 0, total: 0 },
+            finishReason: 'stop',
+          };
+        },
+      };
+
+      const orchestrator = new Orchestrator({ provider: noStreamProvider });
 
       await expect(orchestrator.run({ prompt: 'test', stream: true })).rejects.toThrow(
         ConfigValidationError,
