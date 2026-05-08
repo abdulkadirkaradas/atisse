@@ -3,14 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/completions';
 import type { Stream } from 'openai/core/streaming';
 
+import type { Message, ToolDefinition } from '@atisse/core';
+
 import {
   ProviderRateLimitError,
   ProviderAuthError,
   ProviderTimeoutError,
   ProviderUnavailableError,
   ProviderMalformedResponse,
-  Message,
-  ToolDefinition,
+  Orchestrator,
+  MaxRetriesExceededError,
 } from '@atisse/core';
 
 import { OpenAIProvider, type OpenAIProviderConfig } from '../src/index.js';
@@ -917,8 +919,133 @@ describe('OpenAIProvider', () => {
 
       await provider.generate({ messages });
 
-      const callArgs = mockCreateFn.mock.calls[0]?.[0] as { messages: Array<{ content: string }> };
-      expect(callArgs?.messages[0]?.content).toBe('Hello World');
+      const callArgs = mockCreateFn.mock.calls[0]?.[0] as {
+        messages: Array<{ content: string | Array<{ type: string; text?: string }> }>;
+      };
+      const content = callArgs?.messages[0]?.content;
+
+      // Content should now be an array of text parts
+      expect(Array.isArray(content)).toBe(true);
+      const contentArray = content as Array<{ type: string; text?: string }>;
+      expect(contentArray).toHaveLength(2);
+      expect(contentArray[0]?.type).toBe('text');
+      expect(contentArray[0]?.text).toBe('Hello ');
+      expect(contentArray[1]?.type).toBe('text');
+      expect(contentArray[1]?.text).toBe('World');
+    });
+
+    it('should map MessageContent with image to OpenAI vision format', async () => {
+      const mockCompletion: Partial<ChatCompletion> = {
+        choices: [
+          {
+            message: { role: 'assistant', content: 'Image received' },
+            finish_reason: 'stop',
+            index: 0,
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      } as Partial<ChatCompletion>;
+
+      const mockCreateFn = vi.fn().mockResolvedValue(mockCompletion as ChatCompletion);
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      const messages: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'What is in this image?' },
+            { type: 'image', url: 'https://example.com/image.jpg', mimeType: 'image/jpeg' },
+          ],
+        },
+      ];
+
+      await provider.generate({ messages });
+
+      const callArgs = mockCreateFn.mock.calls[0]?.[0] as {
+        messages: Array<{
+          content:
+            | string
+            | Array<{ type: string; text?: string; image_url?: { url: string; detail: string } }>;
+        }>;
+      };
+      const content = callArgs?.messages[0]?.content;
+
+      // Content should be an array with text and image_url parts
+      expect(Array.isArray(content)).toBe(true);
+      const contentArray = content as Array<{
+        type: string;
+        text?: string;
+        image_url?: { url: string; detail: string };
+      }>;
+      expect(contentArray).toHaveLength(2);
+
+      // First part should be text
+      expect(contentArray[0]?.type).toBe('text');
+      expect(contentArray[0]?.text).toBe('What is in this image?');
+
+      // Second part should be image_url
+      expect(contentArray[1]?.type).toBe('image_url');
+      expect(contentArray[1]?.image_url?.url).toBe('https://example.com/image.jpg');
+      expect(contentArray[1]?.image_url?.detail).toBe('auto');
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Integration with Orchestrator (mocked HTTP)
+  // ─────────────────────────────────────────────────────────────
+
+  describe('integration with Orchestrator', () => {
+    it('should run end-to-end with mocked OpenAI SDK', async () => {
+      const mockCompletion: Partial<ChatCompletion> = {
+        choices: [
+          {
+            message: { role: 'assistant', content: 'Hello from OpenAI!' },
+            finish_reason: 'stop',
+            index: 0,
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      } as Partial<ChatCompletion>;
+
+      const mockCreateFn = vi.fn().mockResolvedValue(mockCompletion as ChatCompletion);
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      const orchestrator = new Orchestrator({
+        provider,
+        timeout: { generateTimeoutMs: 5000, toolTimeoutMs: 1000, totalTimeoutMs: 60_000 },
+      });
+
+      const result = await orchestrator.run({ prompt: 'Hi' });
+
+      expect(result.text).toBe('Hello from OpenAI!');
+      expect(result.usage).toEqual({ prompt: 10, completion: 5, total: 15 });
+      expect(result.runId).toBeDefined();
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should propagate provider errors as MaxRetriesExceededError through Orchestrator', async () => {
+      const mockError = {
+        status: 429,
+        message: 'Rate limit exceeded',
+        cause: new Error('Rate limit'),
+        response: {
+          headers: {
+            get: () => null,
+          },
+        },
+      };
+
+      const mockCreateFn = vi.fn().mockRejectedValue(mockError);
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      const orchestrator = new Orchestrator({
+        provider,
+        retry: { maxAttempts: 1, baseDelayMs: 0, jitter: false },
+        timeout: { generateTimeoutMs: 5000, toolTimeoutMs: 1000, totalTimeoutMs: 60_000 },
+      });
+
+      // Orchestrator retry wraps the final error in MaxRetriesExceededError
+      await expect(orchestrator.run({ prompt: 'Hi' })).rejects.toThrow(MaxRetriesExceededError);
     });
   });
 });

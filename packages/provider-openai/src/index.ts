@@ -5,6 +5,11 @@ import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionChunk,
   ChatCompletion,
+  ChatCompletionContentPartText,
+  ChatCompletionContentPartImage,
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionCreateParamsStreaming,
+  ChatCompletionToolMessageParam,
 } from 'openai/resources/chat/completions';
 import type { Stream } from 'openai/core/streaming';
 
@@ -344,7 +349,7 @@ export class OpenAIProvider implements AIProvider {
   private mapMessages(messages: Message[]): ChatCompletionMessageParam[] {
     return messages.map((msg) => {
       if (msg.role === 'system') {
-        const content = this.mapContent(msg.content);
+        const content = this.mapContentToStringOrTextParts(msg.content);
         return {
           role: 'system',
           content,
@@ -352,7 +357,7 @@ export class OpenAIProvider implements AIProvider {
       }
 
       if (msg.role === 'user') {
-        const content = this.mapContent(msg.content);
+        const content = this.mapContentToContentParts(msg.content);
         return {
           role: 'user',
           content,
@@ -360,7 +365,7 @@ export class OpenAIProvider implements AIProvider {
       }
 
       if (msg.role === 'assistant') {
-        const content = this.mapContent(msg.content);
+        const content = this.mapContentToStringOrTextParts(msg.content);
         const result: ChatCompletionAssistantMessageParam = {
           role: 'assistant',
           content,
@@ -379,12 +384,13 @@ export class OpenAIProvider implements AIProvider {
       }
 
       if (msg.role === 'tool') {
-        const content = this.mapContent(msg.content);
-        return {
+        const content = this.mapContentToStringOrTextParts(msg.content);
+        const toolResult: ChatCompletionToolMessageParam = {
           role: 'tool',
           tool_call_id: msg.toolCallId,
           content,
         };
+        return toolResult;
       }
 
       throw new ProviderMalformedResponse(
@@ -393,17 +399,44 @@ export class OpenAIProvider implements AIProvider {
     });
   }
 
-  private mapContent(content: string | MessageContent[]): string {
+  /**
+   * Map content to string or text-only content parts (for system, assistant, tool messages).
+   * These message types don't support image content.
+   */
+  private mapContentToStringOrTextParts(content: string | MessageContent[]): string | ChatCompletionContentPartText[] {
     if (typeof content === 'string') {
       return content;
     }
 
-    // Map MessageContent array to a string - concatenate text parts
-    // Vision images are not supported in this simplified implementation
+    // Only map text parts - system/assistant/tool messages don't support images
     return content
-      .map((c) => (c.type === 'text' ? c.text : ''))
-      .filter(Boolean)
-      .join('');
+      .filter((c) => c.type === 'text')
+      .map((c) => ({ type: 'text' as const, text: c.text }));
+  }
+
+  /**
+   * Map content to string or mixed content parts including images (for user messages).
+   */
+  private mapContentToContentParts(content: string | MessageContent[]): string | (ChatCompletionContentPartText | ChatCompletionContentPartImage)[] {
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    // Map MessageContent array to OpenAI content parts format
+    const parts: (ChatCompletionContentPartText | ChatCompletionContentPartImage)[] = [];
+
+    for (const c of content) {
+      if (c.type === 'text') {
+        parts.push({ type: 'text', text: c.text });
+      } else if (c.type === 'image') {
+        parts.push({
+          type: 'image_url',
+          image_url: { url: c.url, detail: 'auto' },
+        });
+      }
+    }
+
+    return parts;
   }
 
   private mapTools(tools: ToolDefinition[]): ChatCompletionTool[] {
