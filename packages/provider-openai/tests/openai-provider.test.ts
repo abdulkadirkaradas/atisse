@@ -92,7 +92,7 @@ describe('OpenAIProvider', () => {
       expect(provider.capabilities).toEqual({
         streaming: true,
         toolCalling: true,
-        vision: false,
+        vision: true,
         maxContextTokens: 128_000,
       });
     });
@@ -114,9 +114,9 @@ describe('OpenAIProvider', () => {
       expect(provider.capabilities.toolCalling).toBe(true);
     });
 
-    it('should indicate no vision support', () => {
+    it('should indicate vision support', () => {
       const provider = new OpenAIProvider({ apiKey: 'test-key' });
-      expect(provider.capabilities.vision).toBe(false);
+      expect(provider.capabilities.vision).toBe(true);
     });
 
     it('should set maxContextTokens to 128000', () => {

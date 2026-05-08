@@ -90,7 +90,7 @@ export class OpenAIProvider implements AIProvider {
     this.capabilities = {
       streaming: true,
       toolCalling: true,
-      vision: false,
+      vision: true,
       maxContextTokens: 128_000,
     };
 
