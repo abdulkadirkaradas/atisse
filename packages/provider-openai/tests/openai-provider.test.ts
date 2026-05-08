@@ -310,6 +310,92 @@ describe('OpenAIProvider', () => {
         },
       });
     });
+
+    it('should forward AbortSignal to OpenAI SDK in generate()', async () => {
+      const mockCompletion: Partial<ChatCompletion> = {
+        choices: [
+          {
+            message: { role: 'assistant', content: 'Response' },
+            finish_reason: 'stop',
+            index: 0,
+          },
+        ],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+      } as Partial<ChatCompletion>;
+
+      const mockCreateFn = vi.fn().mockResolvedValue(mockCompletion as ChatCompletion);
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      const controller = new AbortController();
+      const signal = controller.signal;
+
+      await provider.generate({
+        messages: [{ role: 'user', content: 'Hi' }],
+        signal,
+      });
+
+      // The signal is passed as the second argument to create()
+      const secondArg = mockCreateFn.mock.calls[0]?.[1] as { signal: AbortSignal } | undefined;
+      expect(secondArg).toBeDefined();
+      expect(secondArg?.signal).toBe(signal);
+    });
+
+    it('should forward providerOptions to OpenAI SDK in generate()', async () => {
+      const mockCompletion: Partial<ChatCompletion> = {
+        choices: [
+          {
+            message: { role: 'assistant', content: 'Response' },
+            finish_reason: 'stop',
+            index: 0,
+          },
+        ],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+      } as Partial<ChatCompletion>;
+
+      const mockCreateFn = vi.fn().mockResolvedValue(mockCompletion as ChatCompletion);
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      await provider.generate({
+        messages: [{ role: 'user', content: 'Hi' }],
+        providerOptions: { top_p: 0.9, seed: 12345 },
+      });
+
+      const callArgs = mockCreateFn.mock.calls[0]?.[0] as { top_p: number; seed: number };
+      expect(callArgs.top_p).toBe(0.9);
+      expect(callArgs.seed).toBe(12345);
+    });
+
+    it('should forward AbortSignal to OpenAI SDK in generateStream()', async () => {
+      const chunks: ChatCompletionChunk[] = [
+        {
+          id: 'chatcmpl-123',
+          choices: [{ index: 0, delta: { content: 'Hi' }, finish_reason: 'stop' }],
+          model: 'gpt-4o',
+          usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+        },
+      ] as ChatCompletionChunk[];
+
+      const mockCreateFn = vi.fn().mockResolvedValue(createMockStream(chunks));
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      const controller = new AbortController();
+      const signal = controller.signal;
+
+      const result = await provider.generateStream({
+        messages: [{ role: 'user', content: 'Hi' }],
+        signal,
+      });
+
+      // Consume stream to ensure the call was made
+      for await (const _chunk of result) {
+        void _chunk;
+      }
+
+      // The signal is passed as the second argument to create()
+      const secondArg = mockCreateFn.mock.calls[0]?.[1] as { signal: AbortSignal } | undefined;
+      expect(secondArg).toBeDefined();
+      expect(secondArg?.signal).toBe(signal);
+    });
   });
 
   // ─────────────────────────────────────────────────────────────

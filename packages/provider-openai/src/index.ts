@@ -131,7 +131,8 @@ export class OpenAIProvider implements AIProvider {
       }
 
       const completion = await this.client.chat.completions.create(
-        createParams as unknown as Parameters<typeof this.client.chat.completions.create>[0],
+        createParams as unknown as ChatCompletionCreateParamsNonStreaming,
+        request.signal ? { signal: request.signal } : undefined,
       );
 
       const choice = this.extractChoice(completion);
@@ -193,7 +194,8 @@ export class OpenAIProvider implements AIProvider {
       }
 
       const response = await this.client.chat.completions.create(
-        createParams as unknown as Parameters<typeof this.client.chat.completions.create>[0],
+        createParams as unknown as ChatCompletionCreateParamsStreaming,
+        request.signal ? { signal: request.signal } : undefined,
       );
 
       // Cast to stream type - the SDK returns different types for streaming vs non-streaming
