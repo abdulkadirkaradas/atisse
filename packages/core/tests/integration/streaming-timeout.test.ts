@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { StreamChunk } from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { TimeoutExceededError } from '../../src/errors.js';
@@ -15,9 +16,13 @@ describe('Integration: Streaming Timeout (D-M3-2)', () => {
   });
 
   it('generateTimeoutMs correctly interrupts streaming', async () => {
-    // Create a provider that yields chunks slowly - would exceed timeout
-    provider.enqueueStream({
-      chunks: [
+    // Use fake timers to control time
+    vi.useFakeTimers();
+
+    // Override generateStream to yield chunks slowly with fake-time delays.
+    // This ensures the rejectAfter timeout fires during consumption.
+    provider.generateStream = async () => {
+      const chunks: StreamChunk[] = [
         { type: 'text', delta: 'S' },
         { type: 'text', delta: 'l' },
         { type: 'text', delta: 'o' },
@@ -29,42 +34,56 @@ describe('Integration: Streaming Timeout (D-M3-2)', () => {
         { type: 'text', delta: 'p' },
         { type: 'text', delta: 'o' },
         { type: 'done', usage: { prompt: 0, completion: 10, total: 10 } },
-      ],
-    });
+      ];
+
+      return {
+        async *[Symbol.asyncIterator]() {
+          for (const chunk of chunks) {
+            // Each chunk takes 20ms of fake time
+            await new Promise<void>((resolve) => setTimeout(resolve, 20));
+            yield chunk;
+          }
+        },
+      };
+    };
 
     const orchestrator = new Orchestrator({
       provider,
       timeout: { generateTimeoutMs: 50, toolTimeoutMs: 1000, totalTimeoutMs: 60_000 },
     });
 
-    // Use fake timers to control time
-    vi.useFakeTimers();
-
-    // Start the stream - with very short timeout, should trigger timeout
-    let errorReceived = false;
-    let textReceived = '';
-
     const result = (await orchestrator.run({ prompt: 'test', stream: true })) as AsyncIterable<
-      { type: 'text'; delta: string } | { type: 'done' } | { type: 'error'; error: Error }
+      StreamChunk
     >;
 
-    // Advance time past the generateTimeoutMs
-    vi.advanceTimersByTimeAsync(100);
+    let errorReceived = false;
+    let timeoutErrorChunk: StreamChunk | undefined;
 
-    for await (const chunk of result) {
-      if (chunk.type === 'text') {
-        textReceived += chunk.delta;
-      } else if (chunk.type === 'error') {
-        errorReceived = true;
-        expect(chunk.error).toBeInstanceOf(TimeoutExceededError);
+    // Start consuming the stream (triggers the async generator)
+    const consumer = (async () => {
+      for await (const chunk of result) {
+        if (chunk.type === 'error') {
+          errorReceived = true;
+          timeoutErrorChunk = chunk;
+        }
       }
-    }
+    })();
 
-    // With very short timeout of 50ms vs slow text yielding, we should get either:
-    // 1. Some text before timeout, then timeout error
-    // 2. Or timeout error before yielding any text
-    // Either way, the timeout mechanism is working
-    expect(textReceived.length + (errorReceived ? 1 : 0)).toBeGreaterThan(0);
+    // Advance fake timers past the 50ms generateTimeoutMs
+    // At 20ms: first chunk yields
+    // At 40ms: second chunk yields
+    // At 50ms: rejectAfter timeout fires → pipeline catches → error chunk yielded
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Wait for consumer to finish processing all yielded chunks
+    await consumer;
+
+    // Verify TimeoutExceededError was yielded from the stream
+    expect(errorReceived).toBe(true);
+    expect(timeoutErrorChunk).toBeDefined();
+    if (timeoutErrorChunk?.type === 'error') {
+      expect(timeoutErrorChunk.error).toBeInstanceOf(TimeoutExceededError);
+    }
   });
 
   it('streaming completes within timeout - no error', async () => {
@@ -121,7 +140,7 @@ describe('Integration: Streaming Timeout (D-M3-2)', () => {
       const result = (await orchestrator.run({
         prompt: 'test',
         stream: true,
-      })) as AsyncIterable<any>;
+      })) as AsyncIterable<StreamChunk>;
       vi.advanceTimersByTimeAsync(100);
 
       for await (const chunk of result) {
