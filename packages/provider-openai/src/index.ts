@@ -466,7 +466,7 @@ export class OpenAIProvider implements AIProvider {
     const result: ToolCall[] = [];
     for (const tc of message.tool_calls) {
       result.push({
-        id: tc.id,
+        id: tc.id || randomUUID(),
         name: tc.function.name,
         input: JSON.parse(tc.function.arguments),
       });

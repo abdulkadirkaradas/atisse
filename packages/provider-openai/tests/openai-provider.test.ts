@@ -640,7 +640,7 @@ describe('OpenAIProvider', () => {
               content: null,
               tool_calls: [
                 {
-                  id: '', // null ID - should trigger fallback in streaming case
+                  id: '', // empty ID - should trigger randomUUID fallback per interfaces-core.md Rule 9
                   type: 'function',
                   function: {
                     name: 'get_weather',
@@ -664,8 +664,10 @@ describe('OpenAIProvider', () => {
       });
 
       expect(result.toolCalls).toHaveLength(1);
-      // When id is null, the result uses the null id (there's no fallback for non-streaming)
-      expect(result.toolCalls?.[0]?.id).toBe('');
+      // Per interfaces-core.md Rule 9: adapter MUST generate randomUUID if provider omits ID
+      expect(result.toolCalls?.[0]?.id).toBeTruthy();
+      expect(typeof result.toolCalls?.[0]?.id).toBe('string');
+      expect(result.toolCalls?.[0]?.id).not.toBe('');
     });
   });
 
