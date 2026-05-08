@@ -104,51 +104,7 @@ export async function executePipeline(
 
   logger.info('Run started', { runId, profile: activeProfile, sessionId: input.sessionId });
 
-  // Emit profile.resolved event with canonical runId
-  if (input.profile) {
-    const profiles = config.originalConfig?.profiles;
-    const profileName = input.profile;
-    const originalProfile = profiles?.[profileName];
-    if (profiles && originalProfile) {
-      // Calculate overrides based on what was set in the profile
-      const overrides = {
-        provider: originalProfile.provider !== undefined,
-        tools: originalProfile.tools !== undefined,
-        contextProviders: originalProfile.contextProviders !== undefined,
-        systemPrompt: originalProfile.systemPrompt !== undefined,
-        retry: originalProfile.retry !== undefined,
-        toolPolicy: originalProfile.toolPolicy !== undefined,
-      };
-
-      // Calculate total hook count (base + profile)
-      const baseHooks = normalizeHookRegistry(config.hooks);
-      let hookCount = 0;
-      hookCount += baseHooks.beforeRun.length;
-      hookCount += baseHooks.afterRun.length;
-      hookCount += baseHooks.beforeGenerate.length;
-      hookCount += baseHooks.afterGenerate.length;
-      hookCount += baseHooks.beforeTool.length;
-      hookCount += baseHooks.afterTool.length;
-
-      if (originalProfile.hooks) {
-        const profileHooks = normalizeHookRegistry(originalProfile.hooks);
-        hookCount += profileHooks.beforeRun.length;
-        hookCount += profileHooks.afterRun.length;
-        hookCount += profileHooks.beforeGenerate.length;
-        hookCount += profileHooks.afterGenerate.length;
-        hookCount += profileHooks.beforeTool.length;
-        hookCount += profileHooks.afterTool.length;
-      }
-
-      eventBus.emit({
-        type: 'profile.resolved',
-        runId,
-        profileName: input.profile,
-        overrides,
-        hookCount,
-      });
-    }
-  }
+  resolveProfiles(runId, input, config, eventBus);
 
   // Helper to track duration
   const trackDuration = (): number => Date.now() - startTime;
@@ -641,47 +597,7 @@ async function* executeStreamingPipeline(
 
   logger.info('Run started', { runId, profile: activeProfile, sessionId: input.sessionId });
 
-  if (input.profile) {
-    const profiles = config.originalConfig?.profiles;
-    const originalProfile = profiles?.[input.profile];
-    if (profiles && originalProfile) {
-      const overrides = {
-        provider: originalProfile.provider !== undefined,
-        tools: originalProfile.tools !== undefined,
-        contextProviders: originalProfile.contextProviders !== undefined,
-        systemPrompt: originalProfile.systemPrompt !== undefined,
-        retry: originalProfile.retry !== undefined,
-        toolPolicy: originalProfile.toolPolicy !== undefined,
-      };
-
-      const baseHooks = normalizeHookRegistry(config.hooks);
-      let hookCount = 0;
-      hookCount += baseHooks.beforeRun.length;
-      hookCount += baseHooks.afterRun.length;
-      hookCount += baseHooks.beforeGenerate.length;
-      hookCount += baseHooks.afterGenerate.length;
-      hookCount += baseHooks.beforeTool.length;
-      hookCount += baseHooks.afterTool.length;
-
-      if (originalProfile.hooks) {
-        const profileHooks = normalizeHookRegistry(originalProfile.hooks);
-        hookCount += profileHooks.beforeRun.length;
-        hookCount += profileHooks.afterRun.length;
-        hookCount += profileHooks.beforeGenerate.length;
-        hookCount += profileHooks.afterGenerate.length;
-        hookCount += profileHooks.beforeTool.length;
-        hookCount += profileHooks.afterTool.length;
-      }
-
-      eventBus.emit({
-        type: 'profile.resolved',
-        runId,
-        profileName: input.profile,
-        overrides,
-        hookCount,
-      });
-    }
-  }
+  resolveProfiles(runId, input, config, eventBus);
 
   const stateMachine = new LifecycleStateMachine();
   const hooks = normalizeHookRegistry(config.hooks);
@@ -850,7 +766,11 @@ async function* executeStreamingPipeline(
               // Already in terminal state
             }
             eventBus.emit({ type: 'run.failed', runId, error: maxRetriesErr });
-            logger.error('Run failed', { runId, error: maxRetriesErr.message, code: maxRetriesErr.code });
+            logger.error('Run failed', {
+              runId,
+              error: maxRetriesErr.message,
+              code: maxRetriesErr.code,
+            });
             return;
           }
 
@@ -1127,6 +1047,72 @@ async function* executeStreamingPipeline(
   }
 }
 
+/**
+ * Resolve profiles and emit profile.resolved event with details on active profile and overrides.
+ *
+ * @param runId - canonical runId for the execution (same across retries/fallbacks)
+ * @param input - original RunInput which may contain profile reference
+ * @param config - ResolvedConfig after profile merging, used to calculate overrides and hook count
+ * @param eventBus - Event bus to emit profile.resolved event
+ * @remarks
+ * This function is called at the start of both run() and stream() pipelines to ensure that profile resolution is handled consistently and the profile.resolved event is emitted with the canonical runId before any retries or fallbacks occur.
+ * The profile.resolved event includes details on which profile is active, what configuration keys it overrides, and how many hooks are registered after merging, providing valuable context for observability and debugging.
+ */
+function resolveProfiles(
+  runId: string,
+  input: RunInput,
+  config: ResolvedConfig,
+  eventBus: EventBus,
+) {
+  // Emit profile.resolved event with canonical runId
+  if (input.profile) {
+    const profiles = config.originalConfig?.profiles;
+    const profileName = input.profile;
+    const originalProfile = profiles?.[profileName];
+    if (profiles && originalProfile) {
+      // Calculate overrides based on what was set in the profile
+      const overrides = {
+        provider: originalProfile.provider !== undefined,
+        tools: originalProfile.tools !== undefined,
+        contextProviders: originalProfile.contextProviders !== undefined,
+        systemPrompt: originalProfile.systemPrompt !== undefined,
+        retry: originalProfile.retry !== undefined,
+        toolPolicy: originalProfile.toolPolicy !== undefined,
+      };
+
+      // Calculate total hook count
+      // config.hooks is already merged (base + profile) by resolveConfig()
+      const mergedHooks = normalizeHookRegistry(config.hooks);
+      const hookCount =
+        mergedHooks.beforeRun.length +
+        mergedHooks.afterRun.length +
+        mergedHooks.beforeGenerate.length +
+        mergedHooks.afterGenerate.length +
+        mergedHooks.beforeTool.length +
+        mergedHooks.afterTool.length;
+
+      eventBus.emit({
+        type: 'profile.resolved',
+        runId,
+        profileName: input.profile,
+        overrides,
+        hookCount,
+      });
+    }
+  }
+}
+
+/**
+ * Handle errors thrown during pipeline execution and convert to appropriate OrchestratorError subtypes if needed.
+ *
+ * @param error - the original error thrown
+ * @param config - the resolved configuration, used to determine timeout values for wrapping unknown errors
+ * @returns - an OrchestratorError instance that can be emitted and logged consistently
+ * @remarks
+ * This function ensures that all errors emitted by the pipeline are instances of OrchestratorError (or its subtypes) for consistent handling downstream.
+ * It preserves the original error message and code when possible, and wraps unknown errors in a generic TimeoutExceededError to avoid losing error information.
+ * This is important for observability and debugging, as it ensures that all errors have a consistent structure and can be properly categorized in events and logs.
+ */
 function handleOrchestratorError(error: unknown, config: ResolvedConfig): OrchestratorError {
   // ── FAILED path ────────────────────────────────────────
   // Always properly propagate errors:
