@@ -502,6 +502,93 @@ describe('OpenAIProvider', () => {
 
       expect(errorReceived).toBe(true);
     });
+
+    it('should accumulate tool call argument deltas across multiple chunks and emit single complete tool_call', async () => {
+      // Multiple chunks with partial tool call arguments
+      const chunks: ChatCompletionChunk[] = [
+        {
+          id: 'chatcmpl-123',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_abc123',
+                    type: 'function',
+                    function: { name: 'get_weather', arguments: '{"location":' },
+                  },
+                ],
+              },
+              finish_reason: undefined,
+            },
+          ],
+          model: 'gpt-4o',
+          usage: undefined,
+        },
+        {
+          id: 'chatcmpl-123',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_abc123',
+                    function: { arguments: '"New York"}' },
+                  },
+                ],
+              },
+              finish_reason: undefined,
+            },
+          ],
+          model: 'gpt-4o',
+          usage: undefined,
+        },
+        {
+          id: 'chatcmpl-123',
+          choices: [
+            {
+              index: 0,
+              delta: {},
+              finish_reason: 'tool_calls',
+            },
+          ],
+          model: 'gpt-4o',
+          usage: { prompt_tokens: 15, completion_tokens: 25, total_tokens: 40 },
+        },
+      ] as unknown as ChatCompletionChunk[];
+
+      const mockCreateFn = vi.fn().mockResolvedValue(createMockStream(chunks));
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      const result = await provider.generateStream({
+        messages: [{ role: 'user', content: 'Get weather for NYC' }],
+      });
+
+      const toolCallChunks: Array<{
+        type: string;
+        toolCall: { id: string; name: string; input: unknown };
+      }> = [];
+      for await (const chunk of result) {
+        if (chunk.type === 'tool_call') {
+          toolCallChunks.push(
+            chunk as { type: 'tool_call'; toolCall: { id: string; name: string; input: unknown } },
+          );
+        }
+      }
+
+      // Verify only ONE complete tool_call chunk is yielded
+      expect(toolCallChunks).toHaveLength(1);
+
+      // Verify the accumulated tool call has complete arguments
+      const toolCall = toolCallChunks[0]!.toolCall;
+      expect(toolCall.id).toBe('call_abc123');
+      expect(toolCall.name).toBe('get_weather');
+      expect(toolCall.input).toEqual({ location: 'New York' });
+    });
   });
 
   // ─────────────────────────────────────────────────────────────
