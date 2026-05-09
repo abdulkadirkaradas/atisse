@@ -31,9 +31,9 @@
         "websearch": "allow",
         "webfetch": "allow",
         "question": "allow",
-        "bash": "deny",
-        "write": "deny",
-        "edit": "deny"
+        "bash": "ask",
+        "write": "ask",
+        "edit": "ask"
       }
     },
     "spbed": {
