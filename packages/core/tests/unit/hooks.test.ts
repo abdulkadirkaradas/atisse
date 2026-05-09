@@ -62,12 +62,12 @@ describe('hooks', () => {
       );
     });
 
-    it('handles sync hooks', () => {
+    it('handles sync hooks', async () => {
       const hook = (ctx: RunContext) => ctx;
 
       const result = runHooks([hook], createContext());
 
-      expect(result).resolves.toBeDefined();
+      await expect(result).resolves.toBeDefined();
     });
 
     it('handles empty hooks array', async () => {
