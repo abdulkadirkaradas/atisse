@@ -66,7 +66,7 @@ packages/core/
 
 ## MockProvider API Contract
 
-`MockProvider` is the only provider permitted in tests. No real API calls in any test.
+`MockProvider` is the exclusive provider for unit tests. No live API calls are permitted in any test.
 
 ### Queue Entries
 
@@ -200,6 +200,24 @@ it('does NOT retry on auth error', async () => {
   expect(provider.wasCalledTimes(1)).toBe(true);
 });
 ```
+
+## Integration Test Provider Rule
+
+Integration tests that verify adapter-to-Orchestrator wiring MAY use real adapter
+instances with mocked SDK dependencies. No live API calls are permitted in any test —
+the `MockProvider` rule applies to all unit tests and any test that triggers `generate()`.
+
+When using a real adapter in integration tests:
+- Mock the underlying SDK using `vi.mock()`. Never mock provider internals.
+- Verify the adapter is correctly wired into the `Orchestrator` lifecycle
+  (retry, hooks, state transitions, error propagation).
+- Do NOT test SDK behavior — only the adapter's integration with the kernel.
+- Use `MockProvider` for unit-level provider behavior tests (error mapping, shape
+  transformation, streaming chunk assembly).
+
+This permits the pattern used in M4 integration tests (`provider-anthropic` with
+mocked `@anthropic-ai/sdk`, `memory-redis` with mocked `redis`, `context-rag` with
+mocked `VectorStore`), while preserving the absolute prohibition on live API calls.
 
 ---
 
