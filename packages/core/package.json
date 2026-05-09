@@ -38,6 +38,9 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "@atisse/provider-anthropic": "workspace:*",
+    "@atisse/memory-redis": "workspace:*",
+    "@atisse/context-rag": "workspace:*"
   }
 }

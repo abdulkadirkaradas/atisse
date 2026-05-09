@@ -63,6 +63,15 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@atisse/context-rag':
+        specifier: workspace:*
+        version: link:../context-rag
+      '@atisse/memory-redis':
+        specifier: workspace:*
+        version: link:../memory-redis
+      '@atisse/provider-anthropic':
+        specifier: workspace:*
+        version: link:../provider-anthropic
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
