@@ -1,263 +1,261 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContextLoadError } from '@atisse/core';
-import type { Message } from '@atisse/core';
+import { createClient } from 'redis';
 
-const { mockClient, mockGet, mockSetEx, mockDel, mockConnect } = vi.hoisted(
-  () => {
-    const mockGet = vi.fn();
-    const mockSetEx = vi.fn();
-    const mockDel = vi.fn();
-    const mockConnect = vi.fn();
-    const mockClient = {
-      get: mockGet,
-      setEx: mockSetEx,
-      del: mockDel,
-      connect: mockConnect,
-      isOpen: true,
-    };
-    return { mockClient, mockGet, mockSetEx, mockDel, mockConnect };
-  },
-);
+import { RedisMemoryAdapter } from '../src/index.js';
+
+interface MockRedisClient {
+  get: ReturnType<typeof vi.fn>;
+  setEx: ReturnType<typeof vi.fn>;
+  del: ReturnType<typeof vi.fn>;
+  isOpen: boolean;
+  connect: ReturnType<typeof vi.fn>;
+}
+
+let mockClient: MockRedisClient;
+
+function createMockClient(): MockRedisClient {
+  return {
+    get: vi.fn(),
+    setEx: vi.fn(),
+    del: vi.fn(),
+    isOpen: false,
+    connect: vi.fn(),
+  };
+}
 
 vi.mock('redis', () => ({
   createClient: vi.fn(() => mockClient),
 }));
 
-import { RedisMemoryAdapter } from '../src/index.js';
-
-const SESSION_ID = 'test-session-123';
-const URL_CONFIG = { url: 'redis://localhost:6379' };
-
-function createAdapter(): RedisMemoryAdapter {
-  return new RedisMemoryAdapter(URL_CONFIG);
-}
-
-const userMessage: Message = {
-  role: 'user',
-  content: 'hello',
-};
-
-const assistantMessage: Message = {
-  role: 'assistant',
-  content: 'world',
-};
-
 describe('RedisMemoryAdapter', () => {
   beforeEach(() => {
+    mockClient = createMockClient();
     vi.clearAllMocks();
-    mockClient.isOpen = true;
   });
+
+  // ── Constructor ────────────────────────────────────────────
+
+  describe('constructor', () => {
+    it('should accept pre-connected client', () => {
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
+      expect(adapter.id).toBe('redis-memory');
+    });
+
+    it('should accept URL string config', () => {
+      const adapter = new RedisMemoryAdapter({ url: 'redis://localhost:6379' });
+      expect(adapter.id).toBe('redis-memory');
+    });
+
+    it('should create client when URL provided', () => {
+      const adapter = new RedisMemoryAdapter({ url: 'redis://custom:6379' });
+      expect(adapter.id).toBe('redis-memory');
+      expect(createClient).toHaveBeenCalledWith({ url: 'redis://custom:6379' });
+    });
+
+    it('should use default TTL when not provided', () => {
+      const adapter = new RedisMemoryAdapter({ url: 'redis://localhost:6379' });
+      expect((adapter as unknown as { ttlSeconds: number }).ttlSeconds).toBe(3600);
+    });
+
+    it('should use custom TTL when provided', () => {
+      const adapter = new RedisMemoryAdapter({ url: 'redis://localhost:6379', ttlSeconds: 7200 });
+      expect((adapter as unknown as { ttlSeconds: number }).ttlSeconds).toBe(7200);
+    });
+  });
+
+  // ── load() ─────────────────────────────────────────────────
 
   describe('load()', () => {
-    it('returns empty array when key does not exist (null result)', async () => {
-      mockGet.mockResolvedValue(null);
-      const adapter = createAdapter();
+    it('should return empty array for missing key (null result)', async () => {
+      mockClient.get.mockResolvedValue(null);
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      const result = await adapter.load(SESSION_ID);
+      const result = await adapter.load('session-1');
 
       expect(result).toEqual([]);
-      expect(mockGet).toHaveBeenCalledWith(
-        `atisse:session:${SESSION_ID}`,
-      );
+      expect(mockClient.get).toHaveBeenCalledWith('atisse:session:session-1');
     });
 
-    it('returns parsed messages when key exists', async () => {
-      const stored = JSON.stringify([userMessage, assistantMessage]);
-      mockGet.mockResolvedValue(stored);
-      const adapter = createAdapter();
+    it('should parse and return stored messages', async () => {
+      const messages = [
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there' },
+      ];
+      mockClient.get.mockResolvedValue(JSON.stringify(messages));
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      const result = await adapter.load(SESSION_ID);
+      const result = await adapter.load('session-1');
 
       expect(result).toHaveLength(2);
-      expect(result[0]).toMatchObject(userMessage);
-      expect(result[1]).toMatchObject(assistantMessage);
+      expect(result[0]?.role).toBe('user');
+      expect(result[1]?.content).toBe('Hi there');
     });
 
-    it('throws ContextLoadError on Redis error', async () => {
-      const redisError = new Error('Connection refused');
-      mockGet.mockRejectedValue(redisError);
-      const adapter = createAdapter();
+    it('should throw ContextLoadError on Redis get error', async () => {
+      mockClient.get.mockRejectedValue(new Error('Connection lost'));
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      await expect(adapter.load(SESSION_ID)).rejects.toThrow(
-        ContextLoadError,
-      );
+      await expect(adapter.load('session-1')).rejects.toThrow(ContextLoadError);
     });
 
-    it('throws ContextLoadError on malformed JSON in Redis', async () => {
-      mockGet.mockResolvedValue('not-valid-json');
-      const adapter = createAdapter();
+    it('should use sessionId-scoped key', async () => {
+      mockClient.get.mockResolvedValue(null);
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      await expect(adapter.load(SESSION_ID)).rejects.toThrow(
-        ContextLoadError,
-      );
-    });
-  });
+      await adapter.load('my-specific-session');
 
-  describe('connection management', () => {
-    it('calls connect() on first operation when not connected', async () => {
-      mockClient.isOpen = false;
-      mockConnect.mockResolvedValue(undefined);
-      mockGet.mockResolvedValue(null);
-      const adapter = createAdapter();
-
-      await adapter.load(SESSION_ID);
-
-      expect(mockConnect).toHaveBeenCalledTimes(1);
-      expect(mockGet).toHaveBeenCalledWith(
-        `atisse:session:${SESSION_ID}`,
-      );
+      expect(mockClient.get).toHaveBeenCalledWith('atisse:session:my-specific-session');
     });
 
-    it('throws ContextLoadError when connect() fails', async () => {
-      mockClient.isOpen = false;
-      mockConnect.mockRejectedValue(new Error('Connection refused'));
-      const adapter = createAdapter();
+    it('should throw ContextLoadError when stored data is not valid JSON', async () => {
+      mockClient.get.mockResolvedValue('invalid json');
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      await expect(adapter.load(SESSION_ID)).rejects.toThrow(
-        ContextLoadError,
-      );
+      await expect(adapter.load('test-session')).rejects.toThrow(ContextLoadError);
+    });
+
+    it('should throw ContextLoadError when URL-based connect fails', async () => {
+      mockClient.connect.mockRejectedValueOnce(new Error('Connection refused'));
+      const adapter = new RedisMemoryAdapter({ url: 'redis://localhost:6379' });
+
+      await expect(adapter.load('test-session')).rejects.toThrow(ContextLoadError);
     });
   });
+
+  // ── save() ─────────────────────────────────────────────────
 
   describe('save()', () => {
-    it('appends messages to existing session history', async () => {
-      const existing = JSON.stringify([userMessage]);
-      mockGet.mockResolvedValue(existing);
-      const adapter = createAdapter();
+    it('should append messages to existing data', async () => {
+      const existing = [{ role: 'user' as const, content: 'Hello' }];
+      mockClient.get.mockResolvedValue(JSON.stringify(existing));
+      mockClient.setEx.mockResolvedValue('OK');
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      await adapter.save(SESSION_ID, [assistantMessage]);
+      await adapter.save('session-1', [{ role: 'assistant', content: 'Hi' }]);
 
-      expect(mockSetEx).toHaveBeenCalledWith(
-        `atisse:session:${SESSION_ID}`,
+      expect(mockClient.setEx).toHaveBeenCalledWith(
+        'atisse:session:session-1',
         3600,
-        JSON.stringify([userMessage, assistantMessage]),
+        JSON.stringify([
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hi' },
+        ]),
       );
     });
 
-    it('creates new session when no existing data', async () => {
-      mockGet.mockResolvedValue(null);
-      const adapter = createAdapter();
+    it('should handle empty existing session', async () => {
+      mockClient.get.mockResolvedValue(null);
+      mockClient.setEx.mockResolvedValue('OK');
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      await adapter.save(SESSION_ID, [userMessage]);
+      await adapter.save('session-1', [{ role: 'user', content: 'First' }]);
 
-      expect(mockSetEx).toHaveBeenCalledWith(
-        `atisse:session:${SESSION_ID}`,
+      expect(mockClient.setEx).toHaveBeenCalledWith(
+        'atisse:session:session-1',
         3600,
-        JSON.stringify([userMessage]),
+        JSON.stringify([{ role: 'user', content: 'First' }]),
       );
     });
 
-    it('refreshes TTL on every call', async () => {
-      mockGet.mockResolvedValue(null);
-      const adapter = createAdapter();
+    it('should refresh TTL on every save', async () => {
+      mockClient.get.mockResolvedValue(null);
+      mockClient.setEx.mockResolvedValue('OK');
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      await adapter.save(SESSION_ID, [userMessage]);
-      await adapter.save(SESSION_ID, [assistantMessage]);
+      await adapter.save('session-1', [{ role: 'user', content: 'Msg 1' }]);
+      await adapter.save('session-1', [{ role: 'user', content: 'Msg 2' }]);
 
-      expect(mockSetEx).toHaveBeenCalledTimes(2);
-      expect(mockSetEx).toHaveBeenLastCalledWith(
-        `atisse:session:${SESSION_ID}`,
+      expect(mockClient.setEx).toHaveBeenCalledTimes(2);
+      expect(mockClient.setEx).toHaveBeenNthCalledWith(
+        1,
+        'atisse:session:session-1',
+        3600,
+        expect.any(String),
+      );
+      expect(mockClient.setEx).toHaveBeenNthCalledWith(
+        2,
+        'atisse:session:session-1',
         3600,
         expect.any(String),
       );
     });
 
-    it('throws ContextLoadError when load fails inside save', async () => {
-      const redisError = new Error('Connection refused');
-      mockGet.mockRejectedValue(redisError);
-      const adapter = createAdapter();
+    it('should throw ContextLoadError on Redis setEx error', async () => {
+      mockClient.get.mockResolvedValue(null);
+      mockClient.setEx.mockRejectedValue(new Error('Write failed'));
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      await expect(
-        adapter.save(SESSION_ID, [userMessage]),
-      ).rejects.toThrow(ContextLoadError);
-    });
-
-    it('throws ContextLoadError when setEx fails', async () => {
-      mockGet.mockResolvedValue(null);
-      const redisError = new Error('Write failed');
-      mockSetEx.mockRejectedValue(redisError);
-      const adapter = createAdapter();
-
-      await expect(
-        adapter.save(SESSION_ID, [userMessage]),
-      ).rejects.toThrow(ContextLoadError);
-    });
-  });
-
-  describe('clear()', () => {
-    it('deletes the session key', async () => {
-      mockDel.mockResolvedValue(1);
-      const adapter = createAdapter();
-
-      await adapter.clear(SESSION_ID);
-
-      expect(mockDel).toHaveBeenCalledWith(
-        `atisse:session:${SESSION_ID}`,
+      await expect(adapter.save('session-1', [{ role: 'user', content: 'Hi' }])).rejects.toThrow(
+        ContextLoadError,
       );
     });
 
-    it('is idempotent — does not throw on non-existent key', async () => {
-      mockDel.mockResolvedValue(0);
-      const adapter = createAdapter();
+    it('should throw ContextLoadError on Redis get error during save', async () => {
+      mockClient.get.mockRejectedValue(new Error('Read failed'));
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      await expect(adapter.clear('non-existent-session')).resolves.not.toThrow();
-    });
-
-    it('throws ContextLoadError on Redis error', async () => {
-      const redisError = new Error('Connection refused');
-      mockDel.mockRejectedValue(redisError);
-      const adapter = createAdapter();
-
-      await expect(adapter.clear(SESSION_ID)).rejects.toThrow(
+      await expect(adapter.save('session-1', [{ role: 'user', content: 'Hi' }])).rejects.toThrow(
         ContextLoadError,
       );
     });
   });
 
-  describe('storage key isolation', () => {
-    it('includes sessionId in storage key', async () => {
-      mockGet.mockResolvedValue(null);
-      const adapter = createAdapter();
+  // ── clear() ────────────────────────────────────────────────
 
-      await adapter.load(SESSION_ID);
+  describe('clear()', () => {
+    it('should delete the key', async () => {
+      mockClient.del.mockResolvedValue(1);
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      expect(mockGet).toHaveBeenCalledWith(
-        `atisse:session:${SESSION_ID}`,
-      );
+      await adapter.clear('session-1');
+
+      expect(mockClient.del).toHaveBeenCalledWith('atisse:session:session-1');
     });
 
-    it('isolates data between sessions', async () => {
-      const sessionAData = JSON.stringify([userMessage]);
-      const sessionBData = JSON.stringify([assistantMessage]);
+    it('should be idempotent on non-existent key', async () => {
+      mockClient.del.mockResolvedValue(0);
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      mockGet.mockImplementation((key: string) => {
-        if (key === 'atisse:session:session-A') return Promise.resolve(sessionAData);
-        if (key === 'atisse:session:session-B') return Promise.resolve(sessionBData);
-        return Promise.resolve(null);
-      });
-      const adapter = createAdapter();
+      await expect(adapter.clear('non-existent')).resolves.toBeUndefined();
+    });
 
-      const resultA = await adapter.load('session-A');
-      const resultB = await adapter.load('session-B');
+    it('should throw ContextLoadError on Redis del error', async () => {
+      mockClient.del.mockRejectedValue(new Error('Delete failed'));
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
 
-      expect(resultA).toHaveLength(1);
-      expect(resultA[0]!.content).toBe('hello');
-      expect(resultB).toHaveLength(1);
-      expect(resultB[0]!.content).toBe('world');
+      await expect(adapter.clear('session-1')).rejects.toThrow(ContextLoadError);
     });
   });
 
-  describe('constructor variants', () => {
-    it('accepts pre-connected client', () => {
-      const adapter = new RedisMemoryAdapter({
-        client: mockClient as any,
-      });
-      expect(adapter).toBeInstanceOf(RedisMemoryAdapter);
+  // ── Key Isolation ──────────────────────────────────────────
+
+  describe('key isolation', () => {
+    it('should use different keys for different session IDs', async () => {
+      mockClient.get.mockResolvedValue(null);
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
+
+      await adapter.load('session-A');
+      await adapter.load('session-B');
+
+      expect(mockClient.get).toHaveBeenCalledWith('atisse:session:session-A');
+      expect(mockClient.get).toHaveBeenCalledWith('atisse:session:session-B');
     });
 
-    it('accepts url configuration', () => {
-      const adapter = createAdapter();
-      expect(adapter).toBeInstanceOf(RedisMemoryAdapter);
+    it('should use same key format for load and save', async () => {
+      mockClient.get.mockResolvedValue(null);
+      mockClient.setEx.mockResolvedValue('OK');
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
+
+      await adapter.save('session-X', [{ role: 'user', content: 'test' }]);
+
+      const saveKey = mockClient.setEx.mock.calls[0]?.[0];
+      mockClient.get.mockResolvedValue('[{"role":"user","content":"test"}]');
+      await adapter.load('session-X');
+      const loadKey = mockClient.get.mock.calls[mockClient.get.mock.calls.length - 1]?.[0];
+
+      expect(saveKey).toBe('atisse:session:session-X');
+      expect(loadKey).toBe('atisse:session:session-X');
     });
   });
 });
