@@ -36,14 +36,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # 4. Build Packages (sequential to ensure type declarations are available)
-      - name: Build core package
-        run: cd packages/core && pnpm build
+      - name: Build all packages
+        run: pnpm -r build
 
-      - name: Build adapter packages
-        run: |
-          for pkg in packages/memory-inmemory; do
-            [ -d "$pkg" ] && cd "$pkg" && pnpm build && cd ../..
-          done
       # 5. Quality Control and Tests
       # Using scripts defined in your root package.json
       - name: Lint
