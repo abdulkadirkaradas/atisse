@@ -1,7 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Orchestrator, ContextLoadError, ContextProviderError } from '@atisse/core';
+import {
+    beforeEach,
+    describe,
+    expect,
+    it,
+    vi
+    } from 'vitest';
+import { ContextLoadError, ContextProviderError, Orchestrator } from '@atisse/core';
+import { MockProvider } from '@atisse/core/testing';
 import type { ContextProviderInput } from '@atisse/core';
-import { MockProvider } from '../../src/testing/mock-provider.js';
 
 import { RAGContextProvider, type VectorStore, type VectorDocument } from '@atisse/context-rag';
 

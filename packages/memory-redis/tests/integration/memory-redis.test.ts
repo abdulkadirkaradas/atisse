@@ -1,8 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Orchestrator, ContextLoadError } from '@atisse/core';
-import { MockProvider } from '../../src/testing/mock-provider.js';
-
+import {
+    beforeEach,
+    describe,
+    expect,
+    it,
+    vi
+    } from 'vitest';
+import { ContextLoadError, Orchestrator } from '@atisse/core';
+import { MockProvider } from '@atisse/core/testing';
 import { RedisMemoryAdapter } from '@atisse/memory-redis';
+
 
 const mockClient = {
   get: vi.fn(),

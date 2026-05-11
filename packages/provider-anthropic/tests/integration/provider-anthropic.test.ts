@@ -1,7 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi
+  } from 'vitest';
+import { MaxRetriesExceededError, Orchestrator, ProviderAuthError } from '@atisse/core';
 import type { BeforeGenerateContext } from '@atisse/core';
-import { Orchestrator, ProviderAuthError, MaxRetriesExceededError } from '@atisse/core';
-
 import { AnthropicProvider } from '@atisse/provider-anthropic';
 
 vi.mock('@anthropic-ai/sdk', () => ({
