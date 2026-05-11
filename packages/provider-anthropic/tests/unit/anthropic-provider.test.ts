@@ -11,7 +11,7 @@ import {
   OrchestratorError,
 } from '@atisse/core';
 
-import { AnthropicProvider, type AnthropicProviderConfig } from '../src/index.js';
+import { AnthropicProvider, type AnthropicProviderConfig } from '../../src/index.js';
 
 // ── Mock Stream ────────────────────────────────────────────────
 

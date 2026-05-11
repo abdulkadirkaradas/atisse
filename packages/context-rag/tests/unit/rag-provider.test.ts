@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContextLoadError, ContextProviderError } from '@atisse/core';
 import type { ContextProviderInput, SystemMessage } from '@atisse/core';
 
-import { RAGContextProvider, type VectorStore, type VectorDocument } from '../src/index.js';
+import { RAGContextProvider, type VectorStore, type VectorDocument } from '../../src/index.js';
 
 function createMockStore(docs: VectorDocument[] | Error): VectorStore {
   return {

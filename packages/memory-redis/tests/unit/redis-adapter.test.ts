@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContextLoadError } from '@atisse/core';
 import { createClient } from 'redis';
 
-import { RedisMemoryAdapter } from '../src/index.js';
+import { RedisMemoryAdapter } from '../../src/index.js';
 
 interface MockRedisClient {
   get: ReturnType<typeof vi.fn>;
