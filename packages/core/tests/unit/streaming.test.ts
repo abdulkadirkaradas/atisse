@@ -3,7 +3,6 @@ import type {
   AfterGenerateContext,
   PromptResponse,
   StreamChunk,
-  ToolCall,
 } from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
