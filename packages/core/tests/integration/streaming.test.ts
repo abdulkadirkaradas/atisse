@@ -8,7 +8,7 @@ import type {
 } from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
-import { MaxToolRoundsExceededError } from '../../src/errors.js';
+import { ContextLoadError, MaxToolRoundsExceededError, OrchestratorError } from '../../src/errors.js';
 import { MockMemoryAdapter } from '../fixtures/mock-memory.js';
 
 describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
@@ -87,10 +87,13 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
     expect(chunkTypes).toContain('tool_result');
     expect(chunkTypes).toContain('done');
 
-    // tool_result should appear between the two done chunks
-    const firstDoneIndex = chunkTypes.indexOf('done');
+    // tool_result should appear after tool_call and before the single pipeline done
+    // (provider's internal done is no longer forwarded)
+    const toolCallIndex = chunkTypes.indexOf('tool_call');
     const toolResultIndex = chunkTypes.indexOf('tool_result');
-    expect(toolResultIndex).toBeGreaterThan(firstDoneIndex);
+    const doneIndex = chunkTypes.indexOf('done');
+    expect(toolResultIndex).toBeGreaterThan(toolCallIndex);
+    expect(toolResultIndex).toBeLessThan(doneIndex);
 
     expect(toolResults).toHaveLength(1);
     expect(toolResults[0]).toBe('{"value":"hello"}');
@@ -246,7 +249,9 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
     expect(provider.callCount()).toBe(1);
   });
 
-  it('streaming tool execution error terminates stream with error chunk', async () => {
+  it('streaming tool execution error emits tool.failed and retries the stream', async () => {
+    vi.useRealTimers(); // Override beforeEach fake timers — retry uses sleep()
+
     const errorTool: Tool = {
       name: 'error-tool',
       description: 'Always errors',
@@ -260,6 +265,7 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
       },
     };
 
+    // First stream: triggers tool_call
     provider.enqueueStream({
       chunks: [
         {
@@ -270,34 +276,56 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
       ],
     });
 
+    // Second stream: after retry, succeeds
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Recovered' },
+        { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+      ],
+    });
+
     const orchestrator = new Orchestrator({
       provider,
       tools: [errorTool],
+      retry: { maxAttempts: 3, baseDelayMs: 1, jitter: false },
       timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
     });
+
+    const failedEvents: Array<{ toolName: string }> = [];
+    const unsub = orchestrator.on('tool.failed', (e) =>
+      failedEvents.push({ toolName: e.toolName }),
+    );
 
     const result = (await orchestrator.run({
       prompt: 'test',
       stream: true,
     })) as AsyncIterable<StreamChunk>;
 
-    const chunks: StreamChunk[] = [];
+    const chunkTypes: string[] = [];
     for await (const chunk of result) {
-      chunks.push(chunk);
+      chunkTypes.push(chunk.type);
     }
 
-    // Tool execution error propagates through pipeline catch block
-    // Stream terminates with error chunk — no tool_result, no second stream
-    const chunkTypes = chunks.map((c) => c.type);
+    unsub();
+
+    // tool.failed event fired once
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0]!.toolName).toBe('error-tool');
+
+    // tool_call from first stream
     expect(chunkTypes).toContain('tool_call');
-    expect(chunkTypes).toContain('error');
 
-    // Error chunk is last — no done follows
-    const lastIndex = chunkTypes.length - 1;
-    expect(chunkTypes[lastIndex]).toBe('error');
+    // text from retry stream
+    expect(chunkTypes).toContain('text');
 
-    // No tool_result because tool execution threw before yielding results
-    expect(chunkTypes).not.toContain('tool_result');
+    // Stream completed (done chunk)
+    expect(chunkTypes).toContain('done');
+
+    // No error chunk — retry succeeded
+    expect(chunkTypes).not.toContain('error');
+
+    // Provider called twice: initial generateStream + retry generateStream
+    expect(provider.callCount()).toBe(2);
   });
 
   it('memory saved atomically at COMPLETING during streaming', async () => {
@@ -532,5 +560,98 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
     expect(events[0]!.durationMs).toBeDefined();
     expect(events[0]!.durationMs).toBeGreaterThanOrEqual(0);
     expect(events[0]!.finishReason).toBe('stop');
+  });
+
+  it('memory save failure yields error chunk during streaming finalize', async () => {
+    vi.useRealTimers();
+
+    const mockMemory = new MockMemoryAdapter();
+    mockMemory.saveError = new ContextLoadError('memory', new Error('Save failed'));
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Hello' },
+        { type: 'done', usage: { prompt: 5, completion: 10, total: 15 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      memoryAdapter: mockMemory,
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+      sessionId: 'test-session',
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+    expect(
+      (errorChunks[0] as { type: 'error'; error: ContextLoadError }).error,
+    ).toBeInstanceOf(ContextLoadError);
+
+    // The provider's { type: 'done' } chunk is no longer forwarded to the consumer,
+    // and finalizePipeline throws before the pipeline yields its own done chunk.
+    // Result: zero done chunks in the consumer output.
+    const doneChunks = chunks.filter((c) => c.type === 'done');
+    expect(doneChunks.length).toBe(0);
+
+    expect(chunks.some((c) => c.type === 'text')).toBe(true);
+    expect(provider.callCount()).toBe(1);
+  });
+
+  it('afterRun hook failure yields error chunk during streaming finalize', async () => {
+    vi.useRealTimers();
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Hello' },
+        { type: 'done', usage: { prompt: 5, completion: 10, total: 15 } },
+      ],
+    });
+
+    const afterRunHook = vi.fn(async () => {
+      throw new Error('Hook failed');
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      hooks: { afterRun: [afterRunHook] },
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+    expect(
+      (errorChunks[0] as { type: 'error'; error: OrchestratorError }).error,
+    ).toBeInstanceOf(OrchestratorError);
+
+    expect(afterRunHook).toHaveBeenCalledTimes(1);
+
+    // The provider's { type: 'done' } chunk is no longer forwarded to the consumer,
+    // and finalizePipeline throws before the pipeline yields its own done chunk.
+    // Result: zero done chunks in the consumer output.
+    const doneChunks = chunks.filter((c) => c.type === 'done');
+    expect(doneChunks.length).toBe(0);
+
+    expect(provider.callCount()).toBe(1);
   });
 });

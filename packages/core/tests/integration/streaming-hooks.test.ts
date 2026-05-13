@@ -56,13 +56,18 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
       }
     }
 
-    // afterGenerate should fire after the done chunk (not before text chunks)
+    // afterGenerate should fire after text chunks but before the pipeline's done
+    // (provider's internal done is no longer forwarded; afterGenerate fires when
+    // the provider signals stream completion, before the pipeline finalizes)
     expect(callOrder).toContain('afterGenerate');
     const afterGenerateIndex = callOrder.indexOf('afterGenerate');
+    const firstTextIndex = callOrder.indexOf('text');
     const doneIndex = callOrder.indexOf('done');
 
-    // afterGenerate should run after done is yielded to consumer
-    expect(afterGenerateIndex).toBeGreaterThan(doneIndex);
+    // afterGenerate fires after text chunks arrive
+    expect(afterGenerateIndex).toBeGreaterThan(firstTextIndex);
+    // afterGenerate fires before the pipeline's final done
+    expect(afterGenerateIndex).toBeLessThan(doneIndex);
   });
 
   it('beforeGenerate fires BEFORE streaming starts', async () => {

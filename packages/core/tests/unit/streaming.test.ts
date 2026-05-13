@@ -44,9 +44,9 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         chunks.push(chunk);
       }
 
-      // Provider yields one done chunk from stream; pipeline yields another at COMPLETED
+      // Pipeline yields exactly one done chunk (at COMPLETED) — provider's internal done is not forwarded
       const doneChunks = chunks.filter((c) => c.type === 'done');
-      expect(doneChunks.length).toBeGreaterThanOrEqual(1);
+      expect(doneChunks.length).toBe(1);
 
       // Last chunk is always the pipeline's done
       const lastChunk = chunks[chunks.length - 1];
@@ -107,12 +107,9 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         chunks.push(chunk);
       }
 
-      // First chunk is done from provider; pipeline yields another done at COMPLETED
-      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      // Pipeline yields exactly one done chunk (at COMPLETED) — provider's internal done is swallowed
+      expect(chunks).toHaveLength(1);
       expect(chunks[0]!.type).toBe('done');
-
-      // All chunks are done type (no text, no errors)
-      expect(chunks.every((c) => c.type === 'done')).toBe(true);
     });
   });
 
@@ -291,28 +288,28 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         chunkTypes.push(chunk.type);
       }
 
-      // Verify overall pattern: text* → tool_call → done → tool_result → text* → done
-      // First stream: text, text, tool_call, done
+      // Verify overall pattern: text* → tool_call → tool_result → text* → done
+      // First stream: text, text, tool_call (provider done is NOT forwarded)
       // Then tool_result from execution
-      // Second stream: text, text, done
+      // Second stream: text (provider done is NOT forwarded)
       // And final done from pipeline
 
       const firstToolCallIndex = chunkTypes.indexOf('tool_call');
-      const firstDoneIndex = chunkTypes.indexOf('done');
+      const doneIndex = chunkTypes.indexOf('done');
       const toolResultIndex = chunkTypes.indexOf('tool_result');
 
       // text chunks should come before tool_call
       expect(firstToolCallIndex).toBeGreaterThan(0); // At least one text before tool_call
       expect(chunkTypes.slice(0, firstToolCallIndex).every((t) => t === 'text')).toBe(true);
 
-      // tool_call should come before first done
-      expect(firstToolCallIndex).toBeLessThan(firstDoneIndex);
+      // tool_call should come before tool_result (same round)
+      expect(firstToolCallIndex).toBeLessThan(toolResultIndex);
 
-      // tool_result should come after first done
-      expect(toolResultIndex).toBeGreaterThan(firstDoneIndex);
+      // tool_result should come before the final done
+      expect(toolResultIndex).toBeLessThan(doneIndex);
 
       // tool_result should come before text chunks of second stream
-      const textAfterToolResult = chunkTypes.slice(toolResultIndex + 1).filter((t) => t === 'text');
+      const textAfterToolResult = chunkTypes.slice(toolResultIndex + 1, doneIndex).filter((t) => t === 'text');
       expect(textAfterToolResult.length).toBeGreaterThan(0);
 
       // Last chunk should be done
