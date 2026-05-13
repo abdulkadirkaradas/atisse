@@ -60,10 +60,10 @@ const VALID_TRANSITIONS: Record<LifecycleState, LifecycleState[]> = {
   CONTEXT_INJECTED: ['PROMPT_COMPOSED', 'FAILED'],
   PROMPT_COMPOSED: ['GENERATING', 'FAILED'],
   GENERATING: ['TOOL_EXECUTING', 'RETRYING', 'FALLBACKING', 'COMPLETING', 'FAILED'],
-  TOOL_EXECUTING: ['GENERATING', 'RETRYING', 'FAILED'],
-  RETRYING: ['GENERATING', 'CONTEXT_INJECTING', 'FALLBACKING', 'FAILED'],
-  FALLBACKING: ['GENERATING', 'FAILED'],
-  COMPLETING: ['COMPLETED'],
+  TOOL_EXECUTING: ['GENERATING', 'RETRYING', 'COMPLETING', 'FAILED'],
+  RETRYING: ['GENERATING', 'CONTEXT_INJECTING', 'FALLBACKING', 'RETRYING', 'COMPLETING', 'FAILED'],
+  FALLBACKING: ['GENERATING', 'COMPLETING', 'FAILED'],
+  COMPLETING: ['COMPLETED', 'FAILED'],
   COMPLETED: [], // terminal — no transitions allowed
   FAILED: [], // terminal — no transitions allowed
 };
@@ -155,11 +155,15 @@ GENERATING ◄──────────────────────
     │                                            │
     │                                     (tool done, more rounds)
     │                                            └──────► GENERATING
+    │                                     (no more rounds)
+    │                                            └──────► COMPLETING
     │
     ├──(fatal provider error)──────────────────────────► FAILED
     │
     ▼
-COMPLETING
+COMPLETING ◄──────────────────────────────────────────────────────┘
+    │
+    ├──(save/hook failure)─────────────────────────────────────► FAILED
     │
     ▼
 COMPLETED (terminal)
