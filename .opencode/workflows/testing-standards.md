@@ -28,12 +28,14 @@ Fake timers: vi.useFakeTimers() — activated per-test only, never globally
 
 ## Coverage Requirements
 
-| Package                   | Minimum Coverage        |
-| ------------------------- | ----------------------- |
-| `@atisse/core`            | 70% lines, 70% branches |
-| `@atisse/provider-openai` | 60% lines               |
-| `@atisse/memory-redis`    | 60% lines               |
-| `@atisse/context-rag`     | 50% lines               |
+| Package                      | Minimum Coverage        |
+| ---------------------------- | ----------------------- |
+| `@atisse/core`               | 70% lines, 70% branches |
+| `@atisse/provider-openai`    | 60% lines               |
+| `@atisse/provider-anthropic` | 60% lines               |
+| `@atisse/memory-inmemory`    | 60% lines               |
+| `@atisse/memory-redis`       | 60% lines               |
+| `@atisse/context-rag`        | 50% lines               |
 
 Coverage is measured per PR. PRs that drop coverage below thresholds are blocked.
 
