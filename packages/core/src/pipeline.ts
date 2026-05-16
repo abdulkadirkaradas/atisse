@@ -57,7 +57,7 @@ function toEventErrorPayload(error: OrchestratorError): EventErrorPayload {
 }
 
 /**
- * Helper 1: Steps 1–4 (INITIALIZED → CONTEXT_INJECTED → PROMPT_COMPOSED)
+ * Helper 1: Steps 1–4 (INITIALIZED → CONTEXT_INJECTING → CONTEXT_INJECTED → PROMPT_COMPOSED)
  *
  * Consolidates identical initialization from both streaming and non-streaming paths:
  * - runId generation, stateMachine creation, startTime, activeProfile
