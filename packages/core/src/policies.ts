@@ -1,13 +1,7 @@
 import type { RetryPolicy, TimeoutPolicy, ToolPolicy } from './interfaces.js';
 import type { OrchestratorError } from './errors.js';
 import { isRetryable } from './errors.js';
-import {
-  MaxRetriesExceededError,
-  FallbackExhaustedError,
-  ProviderRateLimitError,
-  TimeoutExceededError,
-  OrchestratorError as OrchestratorErrorClass,
-} from './errors.js';
+import { MaxRetriesExceededError, ProviderRateLimitError, TimeoutExceededError } from './errors.js';
 
 // ── Default Constants (internal — NOT exported) ───────────────────────────────────────
 
@@ -173,40 +167,6 @@ async function executeWithRetry<T>(
   throw new MaxRetriesExceededError(attempt, lastError ?? new TimeoutExceededError(0));
 }
 
-/**
- * Execute a function with fallback support.
- * - When primary throws MaxRetriesExceededError and fallback is defined → call fallback once (no retry)
- * - When fallback also fails → throw FallbackExhaustedError(primaryError, fallbackError)
- */
-async function executeWithFallback<T>(
-  primary: () => Promise<T>,
-  fallback: (() => Promise<T>) | undefined,
-  policy: RetryPolicy,
-  onRetry?: (attempt: number, error: OrchestratorError) => void,
-): Promise<T> {
-  try {
-    return await executeWithRetry(primary, policy, onRetry);
-  } catch (error: unknown) {
-    // Check if primary failed with MaxRetriesExceededError and fallback is available
-    if (error instanceof MaxRetriesExceededError && fallback !== undefined) {
-      try {
-        // Call fallback once (no retry on fallback)
-        return await fallback();
-      } catch (fallbackError: unknown) {
-        // Ensure fallback error is an OrchestratorError
-        const fallbackOrchestratorError: OrchestratorError =
-          fallbackError instanceof OrchestratorErrorClass
-            ? fallbackError
-            : new TimeoutExceededError(0);
-        throw new FallbackExhaustedError(error, fallbackOrchestratorError);
-      }
-    }
-
-    // Re-throw the original error
-    throw error;
-  }
-}
-
 // ── Exports ───────────────────────────────────────────────────────────────────────────
 
 export {
@@ -220,5 +180,4 @@ export {
   rejectAfter,
   sleep,
   executeWithRetry,
-  executeWithFallback,
 };

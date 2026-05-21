@@ -3,7 +3,6 @@ import {
   calculateDelay,
   rejectAfter,
   executeWithRetry,
-  executeWithFallback,
   DEFAULT_RETRY,
 } from '../../src/policies.js';
 import {
@@ -11,7 +10,6 @@ import {
   ProviderTimeoutError,
   ProviderAuthError,
   MaxRetriesExceededError,
-  FallbackExhaustedError,
 } from '../../src/errors.js';
 import type { RetryPolicy } from '../../src/interfaces.js';
 
@@ -181,61 +179,4 @@ describe('policies', () => {
     });
   });
 
-  describe('executeWithFallback', () => {
-    it('succeeds with primary', async () => {
-      const primary = vi.fn().mockResolvedValue('primary success');
-      const fallback = vi.fn().mockResolvedValue('fallback success');
-
-      const result = await executeWithFallback(primary, fallback, DEFAULT_RETRY);
-
-      expect(result).toBe('primary success');
-      expect(primary).toHaveBeenCalledTimes(1);
-      expect(fallback).not.toHaveBeenCalled();
-    });
-
-    it('uses fallback when primary fails with MaxRetriesExceededError', async () => {
-      const primary = vi
-        .fn()
-        .mockRejectedValue(new MaxRetriesExceededError(3, new ProviderTimeoutError('timeout')));
-      const fallback = vi.fn().mockResolvedValue('fallback success');
-
-      const result = await executeWithFallback(primary, fallback, DEFAULT_RETRY);
-
-      expect(result).toBe('fallback success');
-      expect(fallback).toHaveBeenCalledTimes(1);
-    });
-
-    it('throws FallbackExhaustedError when both fail', async () => {
-      const primary = vi
-        .fn()
-        .mockRejectedValue(new MaxRetriesExceededError(3, new ProviderTimeoutError('timeout')));
-      const fallback = vi.fn().mockRejectedValue(new ProviderAuthError('fallback auth failed'));
-
-      await expect(executeWithFallback(primary, fallback, DEFAULT_RETRY)).rejects.toThrow(
-        FallbackExhaustedError,
-      );
-    });
-
-    it('rethrows non-MaxRetriesExceededError from primary', async () => {
-      const primary = vi.fn().mockRejectedValue(new ProviderAuthError('auth failed'));
-      const fallback = vi.fn().mockResolvedValue('fallback success');
-
-      await expect(executeWithFallback(primary, fallback, DEFAULT_RETRY)).rejects.toThrow(
-        ProviderAuthError,
-      );
-      expect(fallback).not.toHaveBeenCalled();
-    });
-
-    it('does not retry fallback - called only once', async () => {
-      const primary = vi
-        .fn()
-        .mockRejectedValue(new MaxRetriesExceededError(3, new ProviderTimeoutError('timeout')));
-      const fallback = vi.fn().mockRejectedValue(new ProviderTimeoutError('timeout'));
-
-      await expect(executeWithFallback(primary, fallback, DEFAULT_RETRY)).rejects.toThrow(
-        FallbackExhaustedError,
-      );
-      expect(fallback).toHaveBeenCalledTimes(1); // Not retried!
-    });
-  });
 });
