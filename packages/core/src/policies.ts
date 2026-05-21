@@ -33,7 +33,7 @@ const DEFAULT_TOOL_POLICY: ToolPolicy = {
 // ── Merge Utilities (internal — NOT exported) ──────────────────────────────────────
 
 /**
- * Deep merge of retry policies.
+ * Merge of retry policies.
  * Override values replace base values — not deep merged.
  */
 function mergeRetryPolicy(base: RetryPolicy, override?: Partial<RetryPolicy>): RetryPolicy {
@@ -47,7 +47,7 @@ function mergeRetryPolicy(base: RetryPolicy, override?: Partial<RetryPolicy>): R
 }
 
 /**
- * Deep merge of timeout policies.
+ * Merge of timeout policies.
  * Override values replace base values — not deep merged.
  */
 function mergeTimeoutPolicy(base: TimeoutPolicy, override?: Partial<TimeoutPolicy>): TimeoutPolicy {
@@ -61,7 +61,7 @@ function mergeTimeoutPolicy(base: TimeoutPolicy, override?: Partial<TimeoutPolic
 }
 
 /**
- * Deep merge of tool policies.
+ * Merge of tool policies.
  * Override values replace base values — not deep merged.
  */
 function mergeToolPolicy(base: ToolPolicy, override?: Partial<ToolPolicy>): ToolPolicy {
@@ -142,22 +142,12 @@ async function executeWithRetry<T>(
     try {
       return await fn();
     } catch (error: unknown) {
-      // Narrow to OrchestratorError or unknown
-      const orchestratorError =
-        error instanceof Error && error.name.startsWith('OrchestratorError')
-          ? (error as OrchestratorError)
-          : error;
-
-      // If not an OrchestratorError or not retryable, rethrow immediately
-      if (!(orchestratorError instanceof Error && isRetryable(orchestratorError))) {
-        // Re-throw the original error (not wrapped)
-        if (orchestratorError instanceof Error) {
-          throw orchestratorError;
-        }
+      // Non-retryable errors rethrow immediately
+      if (!isRetryable(error)) {
         throw error;
       }
 
-      lastError = orchestratorError as OrchestratorError;
+      lastError = error as OrchestratorError;
       attempt++;
 
       // If we've reached max attempts, throw MaxRetriesExceededError
