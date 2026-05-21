@@ -285,8 +285,5 @@ export class HookExecutionError extends OrchestratorError {
  * Returns true only for OrchestratorError instances with retryable === true.
  */
 export function isRetryable(error: unknown): boolean {
-  if (error instanceof OrchestratorError) {
-    return error.retryable;
-  }
-  return false;
+  return error instanceof OrchestratorError && error.retryable;
 }
