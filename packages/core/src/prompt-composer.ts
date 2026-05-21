@@ -113,15 +113,7 @@ export class PromptComposer {
    * @returns Estimated token count
    */
   private estimateMessageTokens(message: Message): number {
-    let content: string | MessageContent[];
-
-    if (typeof message.content === 'string') {
-      content = message.content;
-    } else {
-      content = message.content;
-    }
-
-    return this.estimateTokens(content);
+    return this.estimateTokens(message.content);
   }
 
   /**
