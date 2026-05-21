@@ -27,7 +27,7 @@ import type { OrchestratorError } from './errors.js';
 import type { EventErrorPayload } from './interfaces.js';
 import type { HookRegistry } from './interfaces.js';
 import { LifecycleStateMachine } from './lifecycle.js';
-import { PromptComposer } from './prompt-composer.js';
+import { type ComposeParams, PromptComposer } from './prompt-composer.js';
 import { ToolController } from './tool-controller.js';
 import { runHooks, normalizeHookRegistry } from './hooks.js';
 import { calculateDelay, rejectAfter, sleep, executeWithRetry } from './policies.js';
@@ -192,13 +192,7 @@ async function initializePipeline(
     userPromptTokens -
     reserveTokens;
 
-  const composeParams: {
-    systemPrompt?: string;
-    contextMessages: SystemMessage[];
-    memoryMessages: Message[];
-    userPrompt: string;
-    maxTokens?: number;
-  } = {
+  const composeParams: ComposeParams = {
     contextMessages: providerResults,
     memoryMessages,
     userPrompt: input.prompt,
