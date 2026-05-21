@@ -763,6 +763,9 @@ async function* executeStreamingPipeline(
       while (true) {
         try {
           // Validated at run() entry: provider.generateStream exists when stream === true
+          if (activeProvider.capabilities.streaming === false) {
+            throw new ConfigValidationError(['provider does not support streaming']);
+          }
           if (!activeProvider.generateStream) {
             throw new ConfigValidationError(['provider does not implement generateStream']);
           }
