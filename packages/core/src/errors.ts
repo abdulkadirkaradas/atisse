@@ -265,6 +265,21 @@ export class ConfigValidationError extends OrchestratorError {
   }
 }
 
+// ── Hook Errors ───────────────────────────────────────────────
+
+/**
+ * Hook execution failure - not retryable.
+ * Thrown when a hook function throws an error that is not already an OrchestratorError.
+ */
+export class HookExecutionError extends OrchestratorError {
+  readonly code = 'HOOK_EXECUTION_FAILED' as const;
+  readonly retryable = false;
+
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
+}
+
 /**
  * Determines if an error is retryable.
  * Returns true only for OrchestratorError instances with retryable === true.

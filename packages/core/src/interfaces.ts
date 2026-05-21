@@ -37,7 +37,8 @@ export type OrchestratorErrorCode =
   | 'TIMEOUT_EXCEEDED'
   | 'FALLBACK_EXHAUSTED'
   | 'INVALID_STATE_TRANSITION'
-  | 'CONFIG_VALIDATION_FAILED';
+  | 'CONFIG_VALIDATION_FAILED'
+  | 'HOOK_EXECUTION_FAILED';
 
 /**
  * Serialized error payload for event bus.
