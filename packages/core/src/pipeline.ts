@@ -42,7 +42,7 @@ import {
   ContextLoadError,
   MaxRetriesExceededError,
   ConfigValidationError,
-  TokenLimitExceededError,
+  HookExecutionError,
   OrchestratorError as OrchestratorErrorClass,
 } from './errors.js';
 
@@ -502,10 +502,7 @@ export async function executePipeline(
               },
             );
           } catch (error: unknown) {
-            const err =
-              error instanceof OrchestratorErrorClass
-                ? error
-                : new TimeoutExceededError(config.timeout.generateTimeoutMs);
+            const err = handleOrchestratorError(error, config, config.timeout.generateTimeoutMs);
 
             // Check for fallback
             if (err instanceof MaxRetriesExceededError && config.fallbackProvider) {
@@ -525,10 +522,11 @@ export async function executePipeline(
               try {
                 response = await activeProvider.generate(promptRequest);
               } catch (fallbackError: unknown) {
-                const fallbackErr =
-                  fallbackError instanceof OrchestratorErrorClass
-                    ? fallbackError
-                    : new TimeoutExceededError(config.timeout.generateTimeoutMs);
+                const fallbackErr = handleOrchestratorError(
+                  fallbackError,
+                  config,
+                  config.timeout.generateTimeoutMs,
+                );
                 throw new FallbackExhaustedError(err, fallbackErr);
               }
 
@@ -1151,12 +1149,10 @@ function handleOrchestratorError(
     err = error;
   } else if (error instanceof Error) {
     // Wrap non-OrchestratorError instances to satisfy the StreamChunk error contract
-    // TokenLimitExceededError structurally supports arbitrary messages with cause,
-    // preserving original error info for consumer inspection via cause chain
-    err = new TokenLimitExceededError(error.message, error);
+    err = new HookExecutionError(error.message, error);
   } else {
     // Unknown non-Error - wrap it
-    err = new TimeoutExceededError(config.timeout.totalTimeoutMs);
+    err = new TimeoutExceededError(timeoutMs ?? config.timeout.totalTimeoutMs);
   }
   return err;
 }
