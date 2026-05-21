@@ -186,19 +186,15 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
 
       expect(textBeforeTool).toHaveLength(0);
 
-      // Verify afterGenerate hook was called twice (once per generateStream call)
-      // First call: tool-only response (text='', toolCalls present)
-      // Second call: after tool execution (text='After tool', no toolCalls)
-      expect(afterGenerateHook).toHaveBeenCalledTimes(2);
+      // Verify afterGenerate hook was called once (after tool loop completes)
+      // afterGenerate runs only after the generation loop exits (Architecture.md:117-118),
+      // not on intermediate tool_calls responses.
+      expect(afterGenerateHook).toHaveBeenCalledTimes(1);
 
-      // First afterGenerate: tool-only response
-      expect(afterGenerateCalls[0]!.text).toBe('');
-      expect(afterGenerateCalls[0]!.toolCalls?.length).toBeGreaterThan(0);
-
-      // Second afterGenerate: complete response after tool execution
-      expect(afterGenerateCalls[1]!.text).toBe('After tool');
+      // afterGenerate receives the final response after tool execution
+      expect(afterGenerateCalls[0]!.text).toBe('After tool');
       // toolCalls may be empty array (not undefined) when no tools in this response
-      expect(afterGenerateCalls[1]!.toolCalls).toEqual([]);
+      expect(afterGenerateCalls[0]!.toolCalls).toEqual([]);
     });
   });
 

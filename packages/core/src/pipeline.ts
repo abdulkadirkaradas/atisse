@@ -571,24 +571,6 @@ export async function executePipeline(
             tempMessages[1] = { role: 'assistant', content: assistantContent };
           }
 
-          // Run afterGenerate hooks with explicit error handling
-          try {
-            await runHooks(hooks.afterGenerate, { messages, response, input, runId });
-          } catch (hookError: unknown) {
-            // Re-throw hook errors to ensure they propagate, preserving the original error
-            if (hookError instanceof Error) {
-              throw hookError;
-            }
-            const err = new Error(String(hookError));
-            if (hookError !== null && typeof hookError === 'object') {
-              Object.defineProperty(err, 'cause', {
-                value: hookError,
-                enumerable: false,
-              });
-            }
-            throw err;
-          }
-
           // Handle tool_calls
           if (
             finishReason === 'tool_calls' &&
@@ -645,10 +627,19 @@ export async function executePipeline(
               await sleep(delayMs);
               continue;
             }
+            continue;
           }
 
           // No tool calls or finishReason is 'stop' | 'length'
           break;
+        }
+
+        // Run afterGenerate hooks (after tool loop completes, before finalization)
+        try {
+          await runHooks(hooks.afterGenerate, { messages, response, input, runId });
+        } catch (hookError: unknown) {
+          const err = handleOrchestratorError(hookError, config);
+          throw err;
         }
 
         // ── Steps 9–10 — COMPLETING → COMPLETED ────────────
@@ -719,6 +710,7 @@ async function* executeStreamingPipeline(
   // Variables hoisted for catch block access
   let runId = '';
   let stateMachine = new LifecycleStateMachine();
+  let response: PromptResponse;
 
   try {
     // ── Steps 1–4 — initializePipeline ──────────────────
@@ -899,28 +891,12 @@ async function* executeStreamingPipeline(
       }
 
       // After done or error: construct PromptResponse for hooks
-      const response: PromptResponse = {
+      response = {
         text: accumulatedText,
         toolCalls: pendingToolCalls,
         usage: accumulatedUsage,
         finishReason: pendingToolCalls.length > 0 ? 'tool_calls' : 'stop',
       };
-
-      // B-MED-01 fix: wrap streaming afterGenerate in try/catch for error recovery
-      try {
-        await runHooks(hooks.afterGenerate, { messages, response, input, runId });
-      } catch (hookError: unknown) {
-        const err = handleOrchestratorError(hookError, config);
-        yield { type: 'error', error: err };
-        try {
-          stateMachine.transition('FAILED');
-        } catch {
-          // Already in terminal state
-        }
-        eventBus.emit({ type: 'run.failed', runId, error: err });
-        logger.error('Run failed', { runId, error: err.message, code: err.code });
-        return;
-      }
 
       const finishReason = response.finishReason;
 
@@ -1033,7 +1009,22 @@ async function* executeStreamingPipeline(
       break;
     }
 
-    // ── Steps 9–10 — COMPLETING → COMPLETED ────────────
+    // Run afterGenerate hooks (after tool loop completes, before finalization)
+    try {
+      await runHooks(hooks.afterGenerate, { messages, response, input, runId });
+    } catch (hookError: unknown) {
+      const err = handleOrchestratorError(hookError, config);
+      yield { type: 'error', error: err };
+      try {
+        stateMachine.transition('FAILED');
+      } catch {
+        // Already in terminal state
+      }
+      eventBus.emit({ type: 'run.failed', runId, error: err });
+      logger.error('Run failed', { runId, error: err.message, code: err.code });
+      return;
+    }
+
     // ── Steps 9–10 — COMPLETING → COMPLETED ────────────
     const output = await finalizePipeline(
       stateMachine,
