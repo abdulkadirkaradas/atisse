@@ -20,6 +20,7 @@ import type {
   ToolCall,
   AIProvider,
   TokenUsage,
+  OrchestratorEvent,
 } from './interfaces.js';
 import type { ResolvedConfig } from './types.js';
 import type { OrchestratorError } from './errors.js';
@@ -98,9 +99,7 @@ async function initializePipeline(
   ];
 
   // Emit run.started
-  const startedEvent: { type: 'run.started'; runId: string; timestamp: number } & {
-    profile?: string;
-  } = {
+  const startedEvent: OrchestratorEvent = {
     type: 'run.started',
     runId,
     timestamp: startTime,
@@ -1138,13 +1137,18 @@ function resolveProfiles(
  *
  * @param error - the original error thrown
  * @param config - the resolved configuration, used to determine timeout values for wrapping unknown errors
+ * @param timeoutMs - optional specific timeout value to use when wrapping unknown errors (e.g. generateTimeoutMs for generation step), falls back to totalTimeoutMs if not provided
  * @returns - an OrchestratorError instance that can be emitted and logged consistently
  * @remarks
  * This function ensures that all errors emitted by the pipeline are instances of OrchestratorError (or its subtypes) for consistent handling downstream.
  * It preserves the original error message and code when possible, and wraps unknown errors in a generic TimeoutExceededError to avoid losing error information.
  * This is important for observability and debugging, as it ensures that all errors have a consistent structure and can be properly categorized in events and logs.
  */
-function handleOrchestratorError(error: unknown, config: ResolvedConfig): OrchestratorError {
+function handleOrchestratorError(
+  error: unknown,
+  config: ResolvedConfig,
+  timeoutMs?: number,
+): OrchestratorError {
   // ── FAILED path ────────────────────────────────────────
   // Always properly propagate errors:
   // 1. OrchestratorError subtypes -> pass through
