@@ -255,3 +255,45 @@ Consult this before proposing changes that might revisit recorded decisions.
 
 **Decision:** It is NOT a violation for `profile.ts` to define the same normalization logic as `hooks.ts`.
 **Rationale:** Duplicate function definitions avoid upward import violations. The cost (minor duplication) is acceptable to preserve layer boundaries. Consolidation to a shared utility requires moving to L0 or L1 — a separate ADR.
+
+---
+
+## ADR-035: `ToolPolicy.toolTimeoutMs` Is a Mirror of `TimeoutPolicy.toolTimeoutMs`
+
+**Decision:** Accept `toolTimeoutMs` as an intentional duplicate across `TimeoutPolicy` and `ToolPolicy`. `TimeoutPolicy.toolTimeoutMs` is the authoritative user-facing configuration input. `ToolPolicy.toolTimeoutMs` is a convenience mirror synchronized by `profile.ts:resolveConfig()` at `run()` entry — it exists so `ToolController` (L2) can read the timeout from its own policy object without importing `TimeoutPolicy`.
+
+**Rationale:** Three factors converge toward this decision:
+
+1. **Frozen contract constraints** (CONSTRAINTS.md lines 65–84): Removing `toolTimeoutMs` from `ToolPolicy` (Option A) is a MAJOR breaking change — forbidden during v1. The field is required, not optional, so removal breaks all existing consumers.
+
+2. **Layer Architecture** (ADR-030): `ToolController` is a Layer 2 module. Reading timeout from its own `ToolPolicy` parameter keeps it self-contained. Making it import `TimeoutPolicy` would cross policy-domain boundaries unnecessarily. The duplication is architecturally justified — analogous to ADR-034 (duplicate normalization functions preserve layer boundaries).
+
+3. **Data integrity**: A synchronization bug in `profile.ts:resolveConfig()` allowed `timeout.toolTimeoutMs` and `toolPolicy.toolTimeoutMs` to diverge when a user overrode only one path. The fix (synchronizing `toolPolicy.toolTimeoutMs = timeout.toolTimeoutMs` after merge) ensures convergence. `TimeoutPolicy` is designated authoritative to align with orchestrator validation (orchestrator.ts lines 90–92) and Principle 1 (Explicit Over Magical).
+
+**Consequence:**
+- `interfaces-runtime.md` updated: `toolTimeoutMs` added to `ToolPolicy` declaration with cross-reference comment.
+- `interfaces.ts` unchanged structurally; `ToolPolicy.toolTimeoutMs` TSDoc updated to reference `TimeoutPolicy` (no breaking change).
+- `profile.ts` changed: one-line synchronization added after toolPolicy merge step.
+- No test changes required — existing tests set both fields consistently; the synchronization line only corrects divergent values.
+- Classification: NOT a breaking change (patch-level; additive doc change + bug fix).
+
+---
+
+## ADR-036: Empty Tool inputSchema Enforced at Construction Time
+
+**Decision:** Empty `inputSchema: {}` on a `Tool` is rejected at `Orchestrator` construction time with `ConfigValidationError`, not deferred to runtime. The `z.never()` fallback in `ToolController.jsonSchemaToZod()` remains as defense-in-depth.
+
+**Rationale:** Three factors converge toward this decision:
+
+1. **Frozen contract enforcement** (interfaces-core.md line 157): The contract already states `empty {} is FORBIDDEN — see CONSTRAINTS.md`. The implementation was out of alignment — silently accepting `{}` at construction and only catching it at runtime via `z.never()` → `ToolValidationError`. This fix closes the enforcement gap.
+
+2. **Consistency**: All other tool configuration invariants (duplicate names at orchestrator.ts:102–111, `maxToolRounds < 1` at orchestrator.ts:79, `allowParallelTools: true` at orchestrator.ts:74) produce `ConfigValidationError` at construction time. Empty `inputSchema` was the only gap.
+
+3. **Fail-fast security posture**: A tool with an empty schema should be rejected immediately at configuration time, not silently accepted and only surfaced when the tool is first invoked.
+
+**Consequence:**
+- `orchestrator.ts` constructor gains ~13 lines: iterate `config.tools`, reject any where `Object.keys(tool.inputSchema).length === 0` with `ConfigValidationError` (inserted after duplicate-names check at lines 102–111, before the throw at lines 113–116).
+- `orchestrator.test.ts` gains one test: `'empty tool inputSchema throws ConfigValidationError'` following the pattern at lines 476–491.
+- `tool-controller.ts` unchanged — `z.never()` stays as defense-in-depth.
+- `testing-standards.md` updated: REQUIRED construction-time ConfigValidationError test + RECOMMENDED runtime z.never() defense-in-depth test added to What MUST Be Tested section.
+- Classification: NOT a breaking change (patch-level; closes a documented contract enforcement gap).

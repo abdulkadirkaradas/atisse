@@ -242,7 +242,9 @@ mocked `VectorStore`), while preserving the absolute prohibition on live API cal
 - Memory is loaded before prompt composition and saved atomically after COMPLETING
 - Streaming delivers chunks in correct order with correct types
 - `run.input.prompt` is always `role: 'user'` — never `role: 'system'`
-- Tool with empty `inputSchema` (`{}`) is rejected as a configuration error
+- Tool with empty `inputSchema` (`{}`):
+  - REQUIRED: construction-time `ConfigValidationError` test (orchestrator.test.ts)
+  - RECOMMENDED: runtime `ToolValidationError` defense-in-depth test via `z.never()` fallback (tool-controller.test.ts)
 - Cross-session memory isolation: `load('session-A')` never returns session-B data
 - `stream: true` + `fallbackProvider` → `ConfigValidationError`
 - `allowParallelTools: true` → `ConfigValidationError`

@@ -29,6 +29,7 @@ export interface TimeoutPolicy {
 export interface ToolPolicy {
   maxToolRounds: number; // cumulative across entire run() — never resets on retry; default: 5; min: 1
   allowParallelTools: boolean; // MUST be false in v1; true → ConfigValidationError at construction; default: false
+  toolTimeoutMs: number; // mirror of TimeoutPolicy.toolTimeoutMs; synced by profile resolver at run() entry; ToolController enforces via Promise.race; default: 10_000
 }
 ```
 
