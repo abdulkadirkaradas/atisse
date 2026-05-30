@@ -110,6 +110,19 @@ export class Orchestrator {
       }
     }
 
+    // Validate no empty inputSchema (empty {} is FORBIDDEN per contract)
+    if (config.tools) {
+      for (const tool of config.tools) {
+        if (
+          tool.inputSchema &&
+          typeof tool.inputSchema === 'object' &&
+          Object.keys(tool.inputSchema).length === 0
+        ) {
+          validationErrors.push(`tool '${tool.name}' has empty inputSchema ({})`);
+        }
+      }
+    }
+
     // Throw if any validation errors
     if (validationErrors.length > 0) {
       throw new ConfigValidationError(validationErrors);
