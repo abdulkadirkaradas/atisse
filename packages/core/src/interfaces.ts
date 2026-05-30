@@ -211,7 +211,7 @@ export interface TimeoutPolicy {
 export interface ToolPolicy {
   maxToolRounds: number;
   allowParallelTools: boolean;
-  toolTimeoutMs: number; // per Tool.execute(); enforced via Promise.race in ToolController; default: 10_000
+  toolTimeoutMs: number; // mirror of TimeoutPolicy.toolTimeoutMs — synced by profile resolver; ToolController enforces via Promise.race; default: 10_000
 }
 
 /**

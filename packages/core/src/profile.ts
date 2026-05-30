@@ -152,6 +152,9 @@ export function resolveConfig(
     // tools remains baseTools when not provided
   }
 
+  // Synchronize toolPolicy.toolTimeoutMs from authoritative TimeoutPolicy
+  toolPolicy = { ...toolPolicy, toolTimeoutMs: timeout.toolTimeoutMs };
+
   const resolvedConfig: ResolvedConfig = {
     provider,
     ...(fallbackProvider !== undefined && { fallbackProvider }),
