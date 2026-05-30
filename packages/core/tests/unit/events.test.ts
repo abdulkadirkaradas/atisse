@@ -45,15 +45,23 @@ describe('events', () => {
       ).toThrow('listener error');
     });
 
-    it('swallows async listener rejection', async () => {
+    it('backward compat: no callback silently swallows async listener rejection', async () => {
       const listener = async () => {
         throw new Error('async listener error');
       };
-      eventBus.on('run.started', listener);
+      const bus = createEventBus(); // no callback
+      bus.on('run.started', listener);
 
-      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+      const unhandledRejectionHandler = vi.fn();
+      process.on('unhandledRejection', unhandledRejectionHandler);
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      process.removeListener('unhandledRejection', unhandledRejectionHandler);
+
+      expect(unhandledRejectionHandler).not.toHaveBeenCalled();
     });
 
     it('calls all listeners when multiple registered', () => {
@@ -100,6 +108,133 @@ describe('events', () => {
 
       expect(runListener).toHaveBeenCalledTimes(1);
       expect(toolListener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('instanceof Promise guard (Fix 1)', () => {
+    it('does NOT treat thenable object as async', () => {
+      const then = vi.fn();
+      const listener = vi.fn().mockReturnValue({ then });
+      eventBus.on('run.started', listener);
+
+      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(then).not.toHaveBeenCalled();
+    });
+
+    it('null return does not trigger async wrap', () => {
+      const listener = vi.fn().mockReturnValue(null);
+      eventBus.on('run.started', listener);
+
+      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('undefined return does not trigger async wrap', () => {
+      const listener = vi.fn().mockReturnValue(undefined);
+      eventBus.on('run.started', listener);
+
+      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('string return does not trigger async wrap', () => {
+      const listener = vi.fn().mockReturnValue('hello');
+      eventBus.on('run.started', listener);
+
+      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('plain object return does not trigger async wrap', () => {
+      const listener = vi.fn().mockReturnValue({});
+      eventBus.on('run.started', listener);
+
+      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('onListenerError callback (Fix 2)', () => {
+    it('invokes onListenerError when async listener rejects', async () => {
+      const onError = vi.fn();
+      const bus = createEventBus(onError);
+      bus.on('run.started', async () => {
+        throw new Error('async fail');
+      });
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the error object as first argument to onListenerError', async () => {
+      const onError = vi.fn();
+      const bus = createEventBus(onError);
+      const error = new Error('async fail');
+      bus.on('run.started', async () => {
+        throw error;
+      });
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      expect(onError).toHaveBeenCalledWith(error, expect.any(String));
+    });
+
+    it('passes the event type string as second argument to onListenerError', async () => {
+      const onError = vi.fn();
+      const bus = createEventBus(onError);
+      bus.on('run.started', async () => {
+        throw new Error('fail');
+      });
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'run.started');
+    });
+
+    it('does NOT invoke onListenerError when async listener succeeds', async () => {
+      const onError = vi.fn();
+      const bus = createEventBus(onError);
+      bus.on('run.started', async () => {
+        return 'ok';
+      });
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('mixed async success/failure isolates correctly', async () => {
+      const onError = vi.fn();
+      const bus = createEventBus(onError);
+
+      bus.on('run.started', async () => {
+        return 'success';
+      });
+      bus.on('run.started', async () => {
+        throw new Error('failure');
+      });
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'run.started');
     });
   });
 });
