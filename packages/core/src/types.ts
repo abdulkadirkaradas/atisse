@@ -17,6 +17,7 @@ import type {
  *
  * Built from OrchestratorConfig + profile resolution.
  * All fields are non-optional with defaults applied.
+ * Except for `originalConfig`, which is only used for the profile.resolved event and is stripped out before being passed to pipeline.ts.
  */
 export interface ResolvedConfig {
   provider: AIProvider;
