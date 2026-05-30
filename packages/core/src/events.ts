@@ -27,14 +27,10 @@ class InternalEventBus implements EventBus {
       const result = listener(event) as unknown;
 
       // Handle potential Promise returns — errors silently swallowed per implementation-standards.md
-      if (
-        result &&
-        typeof result === 'object' &&
-        typeof (result as { then?: unknown }).then === 'function'
-      ) {
+      if (result instanceof Promise) {
         void (async () => {
           try {
-            await Promise.resolve(result as Promise<unknown>);
+            await result;
           } catch {
             // Swallow — listener errors must never affect pipeline
           }
