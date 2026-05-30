@@ -64,7 +64,9 @@ describe('Integration: Orchestrator Core Run', () => {
 
       const result = await orchestrator.run({ prompt: 'hi', stream: true });
       let fullText = '';
-      for await (const chunk of result as AsyncIterable<{ type: 'text'; delta: string } | { type: 'done' }>) {
+      for await (const chunk of result as AsyncIterable<
+        { type: 'text'; delta: string } | { type: 'done' }
+      >) {
         if (chunk.type === 'text') {
           fullText += chunk.delta;
         }
@@ -488,6 +490,19 @@ describe('Integration: Orchestrator Core Run', () => {
             tools: [tool, tool],
           }),
       ).toThrow(ConfigValidationError);
+    });
+
+    it('empty tool inputSchema throws ConfigValidationError', () => {
+      const tool: Tool = {
+        name: 'empty-schema-tool',
+        description: 'Tool with empty schema',
+        inputSchema: {}, // FORBIDDEN
+        async execute() {},
+      };
+
+      expect(() => new Orchestrator({ provider: createProvider(), tools: [tool] })).toThrow(
+        ConfigValidationError,
+      );
     });
 
     it('stream: true + fallbackProvider throws ConfigValidationError at run()', async () => {
