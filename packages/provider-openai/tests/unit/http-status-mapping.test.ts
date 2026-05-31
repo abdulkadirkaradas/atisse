@@ -6,7 +6,9 @@ import {
   ProviderTimeoutError,
   ProviderUnavailableError,
 } from '@atisse/core';
-import { createTestableProvider } from '../mock-provider.js';
+import type { StreamChunk } from '@atisse/core';
+import { createTestableProvider, createMockStream } from '../mock-provider.js';
+import type { ChatCompletionChunk } from 'openai/resources/chat/completions';
 
 describe('OpenAIProvider Unit Tests - HTTP Status Mapping', () => {
   beforeEach(() => {
@@ -200,6 +202,104 @@ describe('OpenAIProvider Unit Tests - HTTP Status Mapping', () => {
       }
 
       expect(caughtError).toBeInstanceOf(ProviderMalformedResponse);
+    });
+
+    it('should preserve ProviderRateLimitError in streaming path', async () => {
+      const mockError = {
+        name: 'ProviderRateLimitError',
+        status: 429,
+        message: 'Rate limit exceeded',
+        cause: new Error('Rate limit'),
+        response: {
+          headers: {
+            get: (key: string) => (key === 'Retry-After' ? '30' : null),
+          },
+        },
+      };
+
+      const textChunk: ChatCompletionChunk = {
+        id: 'chunk-1',
+        object: 'chat.completion.chunk',
+        created: 1_234_567_890,
+        model: 'gpt-4o',
+        choices: [
+          {
+            index: 0,
+            delta: { content: 'Hello' },
+            finish_reason: null,
+          },
+        ],
+      };
+
+      const mockStream = createMockStream([textChunk], mockError);
+      const mockCreateFn = vi.fn().mockResolvedValue(mockStream);
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      const iterable = await provider.generateStream({
+        messages: [{ role: 'user', content: 'Hi' }],
+      });
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of iterable) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks).toHaveLength(2);
+      expect(chunks[0]?.type).toBe('text');
+      expect(chunks[1]?.type).toBe('error');
+      if (chunks[1]?.type === 'error') {
+        expect(chunks[1]?.error).toBeInstanceOf(ProviderRateLimitError);
+        expect((chunks[1]?.error as ProviderRateLimitError).retryAfterMs).toBe(30000);
+      }
+    });
+
+    it('should preserve ProviderRateLimitError in streaming path without Retry-After header', async () => {
+      const mockError = {
+        name: 'ProviderRateLimitError',
+        status: 429,
+        message: 'Rate limit exceeded',
+        cause: new Error('Rate limit'),
+        response: {
+          headers: {
+            get: () => null,
+          },
+        },
+      };
+
+      const textChunk: ChatCompletionChunk = {
+        id: 'chunk-1',
+        object: 'chat.completion.chunk',
+        created: 1_234_567_890,
+        model: 'gpt-4o',
+        choices: [
+          {
+            index: 0,
+            delta: { content: 'Hello' },
+            finish_reason: null,
+          },
+        ],
+      };
+
+      const mockStream = createMockStream([textChunk], mockError);
+      const mockCreateFn = vi.fn().mockResolvedValue(mockStream);
+      const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
+
+      const iterable = await provider.generateStream({
+        messages: [{ role: 'user', content: 'Hi' }],
+      });
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of iterable) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks).toHaveLength(2);
+      expect(chunks[0]?.type).toBe('text');
+      expect(chunks[1]?.type).toBe('error');
+      if (chunks[1]?.type === 'error') {
+        expect(chunks[1]?.error).toBeInstanceOf(ProviderRateLimitError);
+        expect((chunks[1]?.error as ProviderRateLimitError).retryAfterMs).toBeUndefined();
+      }
     });
 
     it('should map unknown errors to ProviderUnavailableError', async () => {
