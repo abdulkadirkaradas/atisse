@@ -29,6 +29,7 @@ import type {
 } from '@atisse/core';
 
 import {
+  ConfigValidationError,
   ProviderRateLimitError,
   ProviderTimeoutError,
   ProviderUnavailableError,
@@ -36,6 +37,30 @@ import {
   ProviderMalformedResponse,
   OrchestratorError,
 } from '@atisse/core';
+
+/** Keys reserved by the adapter — cannot be overridden by providerOptions. */
+const RESERVED_PROVIDER_OPTIONS = new Set([
+  'model',
+  'messages',
+  'stream',
+  'max_tokens',
+  'tools',
+  'tool_choice',
+]);
+
+/** Validate providerOptions against reserved keys. Throws if conflict found. */
+function validateProviderOptions(
+  providerOptions: Record<string, unknown>,
+  reservedKeys: Set<string>,
+): void {
+  for (const key of Object.keys(providerOptions)) {
+    if (reservedKeys.has(key)) {
+      throw new ConfigValidationError([
+        `providerOptions key '${key}' is reserved and cannot be overridden`,
+      ]);
+    }
+  }
+}
 
 /**
  * Typed interface for OpenAI API error responses.
@@ -125,8 +150,9 @@ export class OpenAIProvider implements AIProvider {
         createParams.tools = this.mapTools(request.tools);
       }
 
-      // Merge provider options last
+      // Merge provider options last, validating no reserved keys
       if (request.providerOptions) {
+        validateProviderOptions(request.providerOptions, RESERVED_PROVIDER_OPTIONS);
         Object.assign(createParams, request.providerOptions);
       }
 
@@ -188,8 +214,9 @@ export class OpenAIProvider implements AIProvider {
         createParams.tools = this.mapTools(request.tools);
       }
 
-      // Merge provider options last
+      // Merge provider options last, validating no reserved keys
       if (request.providerOptions) {
+        validateProviderOptions(request.providerOptions, RESERVED_PROVIDER_OPTIONS);
         Object.assign(createParams, request.providerOptions);
       }
 
