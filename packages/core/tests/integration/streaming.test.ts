@@ -8,7 +8,7 @@ import type {
 } from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
-import { ContextLoadError, MaxToolRoundsExceededError, OrchestratorError } from '../../src/errors.js';
+import { MemorySaveError, MaxToolRoundsExceededError, OrchestratorError } from '../../src/errors.js';
 import { MockMemoryAdapter } from '../fixtures/mock-memory.js';
 
 describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
@@ -566,7 +566,7 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
     vi.useRealTimers();
 
     const mockMemory = new MockMemoryAdapter();
-    mockMemory.saveError = new ContextLoadError('memory', new Error('Save failed'));
+    mockMemory.saveError = new MemorySaveError(new Error('Save failed'));
 
     provider.enqueueStream({
       chunks: [
@@ -595,8 +595,8 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
     const errorChunks = chunks.filter((c) => c.type === 'error');
     expect(errorChunks).toHaveLength(1);
     expect(
-      (errorChunks[0] as { type: 'error'; error: ContextLoadError }).error,
-    ).toBeInstanceOf(ContextLoadError);
+      (errorChunks[0] as { type: 'error'; error: MemorySaveError }).error,
+    ).toBeInstanceOf(MemorySaveError);
 
     // The provider's { type: 'done' } chunk is no longer forwarded to the consumer,
     // and finalizePipeline throws before the pipeline yields its own done chunk.

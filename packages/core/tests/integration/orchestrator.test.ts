@@ -10,7 +10,7 @@ import {
   FallbackExhaustedError,
   ConfigValidationError,
   ToolValidationError,
-  ContextLoadError,
+  MemorySaveError,
 } from '../../src/errors.js';
 import { failingTool, validationFailTool } from '../fixtures/mock-tools.js';
 import { MockMemoryAdapter } from '../fixtures/mock-memory.js';
@@ -119,12 +119,12 @@ describe('Integration: Orchestrator Core Run', () => {
       provider.enqueue({ text: 'Response' });
 
       const memory = new MockMemoryAdapter();
-      memory.saveError = new ContextLoadError('memory', new Error('Injected'));
+      memory.saveError = new MemorySaveError(new Error('Injected'));
 
       const orchestrator = new Orchestrator({ provider, memoryAdapter: memory });
 
       await expect(orchestrator.run({ prompt: 'test', sessionId: 'session-3' })).rejects.toThrow(
-        ContextLoadError,
+        MemorySaveError,
       );
     });
   });

@@ -10,6 +10,7 @@ import {
   ToolNotFoundError,
   ContextLoadError,
   ContextProviderError,
+  MemorySaveError,
   MaxRetriesExceededError,
   TokenLimitExceededError,
   TimeoutExceededError,
@@ -74,6 +75,7 @@ describe('isRetryable', () => {
       ],
       ['ConfigValidationError', () => new ConfigValidationError(['err'])],
       ['PipelineInternalError', () => new PipelineInternalError('test')],
+      ['MemorySaveError', () => new MemorySaveError(new Error('test'))],
     ] as const;
 
     for (const [name, factory] of nonRetryableErrors) {
