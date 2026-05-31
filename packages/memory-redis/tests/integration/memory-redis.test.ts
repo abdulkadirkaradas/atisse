@@ -5,7 +5,7 @@ import {
     it,
     vi
     } from 'vitest';
-import { ContextLoadError, Orchestrator } from '@atisse/core';
+import { MemorySaveError, Orchestrator } from '@atisse/core';
 import { MockProvider } from '@atisse/core/testing';
 import { RedisMemoryAdapter } from '@atisse/memory-redis';
 
@@ -123,7 +123,7 @@ describe('RedisMemoryAdapter + Orchestrator (integration)', () => {
     const orchestrator = new Orchestrator({ provider, memoryAdapter: memory });
 
     await expect(orchestrator.run({ prompt: 'Hi', sessionId: 'session-1' })).rejects.toThrow(
-      ContextLoadError,
+      MemorySaveError,
     );
   });
 
