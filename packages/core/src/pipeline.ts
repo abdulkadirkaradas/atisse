@@ -755,6 +755,7 @@ async function* executeStreamingPipeline(
       // D-M3-1: Full retry loop with maxAttempts for streaming pre-stream errors
       // (generateStream Promise rejection — not mid-stream chunk errors)
       let attempt = 0;
+      let streamToolAttempt = 0;
       let streamIterable: AsyncIterable<StreamChunk> | undefined;
 
       while (true) {
@@ -989,8 +990,9 @@ async function* executeStreamingPipeline(
             error: toEventErrorPayload(err),
           });
 
-          // Backoff before retry
-          const delayMs = calculateDelay(attempt, config.retry, err);
+          // Backoff before retry — use independent streamToolAttempt counter
+          const delayMs = calculateDelay(streamToolAttempt, config.retry, err);
+          streamToolAttempt++;
           await sleep(delayMs);
 
           // Reset streaming state for retry
