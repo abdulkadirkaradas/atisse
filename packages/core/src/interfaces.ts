@@ -38,7 +38,8 @@ export type OrchestratorErrorCode =
   | 'FALLBACK_EXHAUSTED'
   | 'INVALID_STATE_TRANSITION'
   | 'CONFIG_VALIDATION_FAILED'
-  | 'HOOK_EXECUTION_FAILED';
+  | 'HOOK_EXECUTION_FAILED'
+  | 'PIPELINE_INTERNAL_ERROR';
 
 /**
  * Serialized error payload for event bus.

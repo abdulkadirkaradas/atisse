@@ -63,6 +63,7 @@ export {
   FallbackExhaustedError,
   InvalidStateTransitionError,
   ConfigValidationError,
+  PipelineInternalError,
   isRetryable,
 } from './errors.js';
 

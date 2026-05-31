@@ -16,6 +16,7 @@ import {
   FallbackExhaustedError,
   InvalidStateTransitionError,
   ConfigValidationError,
+  PipelineInternalError,
   isRetryable,
 } from '../../src/errors.js';
 
@@ -72,6 +73,7 @@ describe('isRetryable', () => {
         () => new InvalidStateTransitionError('INITIALIZED', 'COMPLETED'),
       ],
       ['ConfigValidationError', () => new ConfigValidationError(['err'])],
+      ['PipelineInternalError', () => new PipelineInternalError('test')],
     ] as const;
 
     for (const [name, factory] of nonRetryableErrors) {
@@ -112,6 +114,17 @@ describe('InvalidStateTransitionError', () => {
     const error = new InvalidStateTransitionError('COMPLETED', 'any');
     expect(error.from).toBe('COMPLETED');
     expect(error.to).toBe('any');
+  });
+});
+
+describe('PipelineInternalError', () => {
+  it('has code PIPELINE_INTERNAL_ERROR', () => {
+    const error = new PipelineInternalError('test');
+    expect(error.code).toBe('PIPELINE_INTERNAL_ERROR');
+  });
+
+  it('is not retryable', () => {
+    expect(isRetryable(new PipelineInternalError('test'))).toBe(false);
   });
 });
 

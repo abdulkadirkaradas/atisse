@@ -42,7 +42,7 @@ import {
   ContextLoadError,
   MaxRetriesExceededError,
   ConfigValidationError,
-  HookExecutionError,
+  PipelineInternalError,
   OrchestratorError as OrchestratorErrorClass,
 } from './errors.js';
 
@@ -1145,8 +1145,10 @@ function handleOrchestratorError(
   if (error instanceof OrchestratorErrorClass) {
     err = error;
   } else if (error instanceof Error) {
-    // Wrap non-OrchestratorError instances to satisfy the StreamChunk error contract
-    err = new HookExecutionError(error.message, error);
+    // Wrap non-OrchestratorError instances to satisfy the StreamChunk error contract.
+    // PipelineInternalError is used (not HookExecutionError) because this catch
+    // block handles errors from the entire pipeline execution, not just hook code.
+    err = new PipelineInternalError(error.message, error);
   } else {
     // Unknown non-Error - wrap it
     err = new TimeoutExceededError(timeoutMs ?? config.timeout.totalTimeoutMs);

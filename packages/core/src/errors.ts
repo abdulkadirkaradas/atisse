@@ -265,6 +265,20 @@ export class ConfigValidationError extends OrchestratorError {
   }
 }
 
+/**
+ * Pipeline internal error - not retryable.
+ * Thrown when a non-OrchestratorError is caught in the pipeline execution path
+ * to satisfy the StreamChunk and event error contracts.
+ */
+export class PipelineInternalError extends OrchestratorError {
+  readonly code = 'PIPELINE_INTERNAL_ERROR' as const;
+  readonly retryable = false;
+
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
+}
+
 // ── Hook Errors ───────────────────────────────────────────────
 
 /**
