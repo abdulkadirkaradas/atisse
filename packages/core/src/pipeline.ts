@@ -43,6 +43,7 @@ import {
   MaxRetriesExceededError,
   ConfigValidationError,
   PipelineInternalError,
+  MemorySaveError,
   OrchestratorError as OrchestratorErrorClass,
 } from './errors.js';
 
@@ -339,7 +340,7 @@ async function finalizePipeline(
       await memoryAdapter.save(input.sessionId, [tempMessages[0], tempMessages[1]]);
     } catch (error: unknown) {
       // D-M2-1/A: Memory save failure -> FAILED (no retry check)
-      throw new ContextLoadError('memory', error);
+      throw new MemorySaveError(error);
     }
   }
 
