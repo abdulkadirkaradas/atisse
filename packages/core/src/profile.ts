@@ -1,4 +1,4 @@
-import type { OrchestratorConfig, HookRegistry, AIProvider, Tool, Logger } from './interfaces.js';
+import type { OrchestratorConfig, HookRegistry, AIProvider, Tool, Logger, ToolDefinition } from './interfaces.js';
 import type { ResolvedConfig } from './types.js';
 import { ConfigValidationError } from './errors.js';
 import {
@@ -155,11 +155,22 @@ export function resolveConfig(
   // Synchronize toolPolicy.toolTimeoutMs from authoritative TimeoutPolicy
   toolPolicy = { ...toolPolicy, toolTimeoutMs: timeout.toolTimeoutMs };
 
+  // Pre-compute ToolDefinition[] to avoid repeated Array.from().map() in generation loop
+  const toolDefinitions: ToolDefinition[] | undefined =
+    tools.size > 0
+      ? Array.from(tools.values()).map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        }))
+      : undefined;
+
   const resolvedConfig: ResolvedConfig = {
     provider,
     ...(fallbackProvider !== undefined && { fallbackProvider }),
     ...(systemPrompt !== undefined && { systemPrompt }),
     tools,
+    ...(toolDefinitions !== undefined && { toolDefinitions }),
     contextProviders,
     ...(memoryAdapter !== undefined && { memoryAdapter }),
     retry,

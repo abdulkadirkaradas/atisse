@@ -453,14 +453,7 @@ export async function executePipeline(
           });
 
           // Build PromptRequest
-          const promptTools =
-            config.tools.size > 0
-              ? Array.from(config.tools.values()).map((t) => ({
-                  name: t.name,
-                  description: t.description,
-                  inputSchema: t.inputSchema,
-                }))
-              : undefined;
+          const promptTools = config.toolDefinitions;
 
           const promptRequest: PromptRequest = {
             messages,
@@ -735,14 +728,7 @@ async function* executeStreamingPipeline(
         messageCount: messages.length,
       });
 
-      const promptTools =
-        config.tools.size > 0
-          ? Array.from(config.tools.values()).map((t) => ({
-              name: t.name,
-              description: t.description,
-              inputSchema: t.inputSchema,
-            }))
-          : undefined;
+      const promptTools = config.toolDefinitions;
 
       const promptRequest: PromptRequest = {
         messages,

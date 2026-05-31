@@ -1,7 +1,7 @@
 // Internal types for M1 — expanded in M2 as needed
 // No exports — Layer 0 internal file
 
-import type { AIProvider, ContextProvider, MemoryAdapter, Tool } from './interfaces.js';
+import type { AIProvider, ContextProvider, MemoryAdapter, Tool, ToolDefinition } from './interfaces.js';
 import type {
   RetryPolicy,
   TimeoutPolicy,
@@ -24,6 +24,11 @@ export interface ResolvedConfig {
   fallbackProvider?: AIProvider;
   systemPrompt?: string;
   tools: Map<string, Tool>;
+  /** Pre-computed ToolDefinition[] for PromptRequest.tools.
+   *  Computed once during profile resolution to avoid repeated
+   *  Array.from().map() in the generation loop.
+   *  Undefined when config.tools is empty. */
+  toolDefinitions?: ToolDefinition[];
   contextProviders: ContextProvider[];
   memoryAdapter?: MemoryAdapter;
   retry: RetryPolicy;
