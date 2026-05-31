@@ -16,6 +16,7 @@ import type {
 } from '@atisse/core';
 
 import {
+  ConfigValidationError,
   ProviderRateLimitError,
   ProviderTimeoutError,
   ProviderUnavailableError,
@@ -120,6 +121,31 @@ interface AnthropicToolParam {
   input_schema: Record<string, unknown>;
 }
 
+/** Keys reserved by the adapter — cannot be overridden by providerOptions. */
+const RESERVED_PROVIDER_OPTIONS = new Set([
+  'model',
+  'messages',
+  'stream',
+  'max_tokens',
+  'tools',
+  'system',
+  'tool_choice',
+]);
+
+/** Validate providerOptions against reserved keys. Throws if conflict found. */
+function validateProviderOptions(
+  providerOptions: Record<string, unknown>,
+  reservedKeys: Set<string>,
+): void {
+  for (const key of Object.keys(providerOptions)) {
+    if (reservedKeys.has(key)) {
+      throw new ConfigValidationError([
+        `providerOptions key '${key}' is reserved and cannot be overridden`,
+      ]);
+    }
+  }
+}
+
 export interface AnthropicProviderConfig {
   apiKey: string;
   model?: string;
@@ -161,7 +187,10 @@ export class AnthropicProvider implements AIProvider {
       if (system) createParams.system = system;
       if (tools) createParams.tools = tools;
       if (request.temperature !== undefined) createParams.temperature = request.temperature;
-      if (request.providerOptions) Object.assign(createParams, request.providerOptions);
+      if (request.providerOptions) {
+        validateProviderOptions(request.providerOptions, RESERVED_PROVIDER_OPTIONS);
+        Object.assign(createParams, request.providerOptions);
+      }
 
       const response = await this.client.messages.create(
         createParams as unknown as MessageCreateParamsBase,
@@ -190,7 +219,10 @@ export class AnthropicProvider implements AIProvider {
       if (system) createParams.system = system;
       if (tools) createParams.tools = tools;
       if (request.temperature !== undefined) createParams.temperature = request.temperature;
-      if (request.providerOptions) Object.assign(createParams, request.providerOptions);
+      if (request.providerOptions) {
+        validateProviderOptions(request.providerOptions, RESERVED_PROVIDER_OPTIONS);
+        Object.assign(createParams, request.providerOptions);
+      }
 
       const stream = await this.client.messages.create(
         createParams as unknown as MessageCreateParamsBase,
