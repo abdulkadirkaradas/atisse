@@ -420,7 +420,8 @@ export async function executePipeline(
     let stateMachine = new LifecycleStateMachine();
     let activeProvider: AIProvider = config.provider;
     let roundCounter = 0;
-    let attempt = 0;
+    let providerAttempt = 0;
+    let toolAttempt = 0;
 
     // Loop for retry/backoff logic
     while (true) {
@@ -475,7 +476,7 @@ export async function executePipeline(
               () => activeProvider.generate(promptRequest),
               config.retry,
               (retryAttempt, error) => {
-                attempt = retryAttempt;
+                providerAttempt = retryAttempt;
                 const delayMs = calculateDelay(retryAttempt, config.retry, error);
 
                 // Transition to RETRYING state - pause before next generation attempt
@@ -534,7 +535,7 @@ export async function executePipeline(
             }
 
             // Retryable without fallback - continue loop
-            const delayMs = calculateDelay(attempt, config.retry, err);
+            const delayMs = calculateDelay(providerAttempt, config.retry, err);
             await sleep(delayMs);
             // Transition back to GENERATING for retry attempt
             stateMachine.transition('GENERATING');
@@ -615,8 +616,9 @@ export async function executePipeline(
                 error: toEventErrorPayload(err),
               });
 
-              // Retry
-              const delayMs = calculateDelay(attempt, config.retry, err);
+              // Retry — use independent toolAttempt counter
+              const delayMs = calculateDelay(toolAttempt, config.retry, err);
+              toolAttempt++;
               await sleep(delayMs);
               continue;
             }
