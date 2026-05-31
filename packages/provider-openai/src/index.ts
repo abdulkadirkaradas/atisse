@@ -301,30 +301,13 @@ export class OpenAIProvider implements AIProvider {
         usage: finalUsage ?? { prompt: 0, completion: 0, total: 0 },
       };
     } catch (error: unknown) {
-      const mappedError = this.mapErrorToOrchestratorError(error);
-      yield { type: 'error', error: mappedError };
-      return;
+      try {
+        this.mapError(error);
+      } catch (mapped: unknown) {
+        yield { type: 'error', error: mapped as OrchestratorError };
+        return;
+      }
     }
-  }
-
-  private mapErrorToOrchestratorError(error: unknown): ProviderUnavailableError {
-    if (error instanceof ProviderRateLimitError) {
-      return new ProviderUnavailableError('Rate limit exceeded', error);
-    }
-    if (error instanceof ProviderAuthError) {
-      return new ProviderUnavailableError('Authentication failed', error);
-    }
-    if (error instanceof ProviderTimeoutError) {
-      return new ProviderUnavailableError('Request timed out', error);
-    }
-    if (error instanceof ProviderUnavailableError) {
-      return error;
-    }
-    if (error instanceof ProviderMalformedResponse) {
-      return new ProviderUnavailableError('Provider returned malformed response', error);
-    }
-
-    return new ProviderUnavailableError('Provider unavailable', error);
   }
 
   private mapError(error: unknown): never {
