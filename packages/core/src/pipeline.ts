@@ -30,7 +30,7 @@ import { LifecycleStateMachine } from './lifecycle.js';
 import { type ComposeParams, PromptComposer } from './prompt-composer.js';
 import { ToolController } from './tool-controller.js';
 import { runHooks, normalizeHookRegistry } from './hooks.js';
-import { calculateDelay, rejectAfter, sleep, executeWithRetry } from './policies.js';
+import { calculateDelay, sleep, executeWithRetry, withTimeout } from './policies.js';
 import {
   isRetryable,
   TimeoutExceededError,
@@ -403,7 +403,7 @@ export async function executePipeline(
   // Non-streaming path follows the original implementation
   // Helper to run the main execution with top-level timeout
   try {
-    return await Promise.race([_execute(), rejectAfter(config.timeout.totalTimeoutMs)]);
+    return await withTimeout(_execute(), config.timeout.totalTimeoutMs);
   } catch (error) {
     // Handle timeout from the race - rethrow TimeoutExceededError
     if (error instanceof TimeoutExceededError) {
@@ -815,11 +815,11 @@ async function* executeStreamingPipeline(
       }
 
       // D-M3-2: Stream consumption with timeout fallback
-      // Wrap stream consumption in Promise.race with generateTimeoutMs timeout
+      // Wrap stream consumption with generateTimeoutMs timeout
       let streamError: OrchestratorErrorClass | undefined;
 
       // Consume stream and collect chunks (can be interrupted by timeout)
-      const chunks = await Promise.race([
+      const chunks = await withTimeout(
         (async () => {
           const collected: StreamChunk[] = [];
           for await (const chunk of streamIterable) {
@@ -830,8 +830,8 @@ async function* executeStreamingPipeline(
           }
           return collected;
         })(),
-        rejectAfter(config.timeout.generateTimeoutMs),
-      ]);
+        config.timeout.generateTimeoutMs,
+      );
 
       // Process collected chunks and yield to consumer
       for (const chunk of chunks) {

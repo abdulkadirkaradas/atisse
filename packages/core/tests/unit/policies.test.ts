@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   calculateDelay,
-  rejectAfter,
+  withTimeout,
   executeWithRetry,
   DEFAULT_RETRY,
 } from '../../src/policies.js';
@@ -94,13 +94,57 @@ describe('policies', () => {
     });
   });
 
-  describe('rejectAfter', () => {
+  describe('withTimeout', () => {
     it('rejects with TimeoutExceededError after specified ms', async () => {
-      const promise = rejectAfter(100);
+      const promise = withTimeout(new Promise(() => {}), 100);
 
       vi.runAllTimersAsync();
 
       await expect(promise).rejects.toThrow('Execution timed out after 100ms');
+    });
+
+    it('resolves when wrapped promise resolves before timeout', async () => {
+      const result = await withTimeout(Promise.resolve('ok'), 100);
+      expect(result).toBe('ok');
+    });
+
+    it('rejects when wrapped promise rejects before timeout', async () => {
+      await expect(
+        withTimeout(Promise.reject(new Error('fail')), 100),
+      ).rejects.toThrow('fail');
+    });
+
+    it('passes through when ms <= 0', async () => {
+      const result = await withTimeout(Promise.resolve('no-timeout'), 0);
+      expect(result).toBe('no-timeout');
+    });
+
+    describe('timer cleanup', () => {
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it('clears timer when wrapped promise resolves before timeout', async () => {
+        const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+        await withTimeout(Promise.resolve('ok'), 100_000);
+        expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+      });
+
+      it('clears timer when wrapped promise rejects before timeout', async () => {
+        const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+        await expect(
+          withTimeout(Promise.reject(new Error('fail')), 100_000),
+        ).rejects.toThrow('fail');
+        expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+      });
+
+      it('calls clearTimeout even when timeout fires first (no-op safeguard)', async () => {
+        const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+        const promise = withTimeout(new Promise(() => {}), 100);
+        vi.runAllTimersAsync();
+        await expect(promise).rejects.toThrow('Execution timed out after 100ms');
+        expect(clearTimeoutSpy).toHaveBeenCalled();
+      });
     });
   });
 

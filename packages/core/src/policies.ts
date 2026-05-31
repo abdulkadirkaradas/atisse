@@ -90,18 +90,35 @@ function calculateDelay(attempt: number, policy: RetryPolicy, error?: Orchestrat
   return capped;
 }
 
-// ── Timeout Utility (internal — NOT exported) ────────────────────────────────────────
+// ── Timeout Utilities ─────────────────────────────────────────────────────────────────
 
 /**
- * Creates a promise that rejects with TimeoutExceededError after specified milliseconds.
- * Used in all Promise.race timeout guards throughout the codebase.
+ * Wraps a promise with a timeout that rejects with TimeoutExceededError.
+ * The internal setTimeout is CLEANED UP if the wrapped promise settles first.
+ *
+ * When ms <= 0, returns the original promise with no timeout wrapping.
  */
-function rejectAfter(ms: number): Promise<never> {
-  return new Promise((_, reject) => {
-    setTimeout(() => {
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  if (ms <= 0) {
+    return promise;
+  }
+
+  let timerHandle: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timerHandle = setTimeout(() => {
       reject(new TimeoutExceededError(ms));
     }, ms);
   });
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    return result;
+  } finally {
+    if (timerHandle !== undefined) {
+      clearTimeout(timerHandle);
+    }
+  }
 }
 
 // ── Internal Utilities (internal — NOT exported) ─────────────────────────────────────
@@ -177,7 +194,7 @@ export {
   mergeTimeoutPolicy,
   mergeToolPolicy,
   calculateDelay,
-  rejectAfter,
+  withTimeout,
   sleep,
   executeWithRetry,
 };

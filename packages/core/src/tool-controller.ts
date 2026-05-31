@@ -6,7 +6,7 @@ import {
   OrchestratorError,
   TimeoutExceededError,
 } from './errors.js';
-import { rejectAfter } from './policies.js';
+import { withTimeout } from './policies.js';
 import { z } from 'zod';
 
 /**
@@ -120,7 +120,7 @@ export class ToolController {
    * Errors propagate to executeRound for wrapping decisions.
    */
   private async executeWithTimeout(tool: Tool, input: unknown): Promise<unknown> {
-    return Promise.race([tool.execute(input), rejectAfter(this.policy.toolTimeoutMs)]);
+    return withTimeout(tool.execute(input), this.policy.toolTimeoutMs);
   }
 
   /**
