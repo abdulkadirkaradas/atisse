@@ -675,6 +675,52 @@ export async function executePipeline(
 }
 
 /**
+ * Wraps an AsyncIterable with a per-iteration idle timeout.
+ * If the time between consecutive `next()` calls exceeds `timeoutMs`,
+ * the wrapped iterator throws TimeoutExceededError.
+ *
+ * When timeoutMs <= 0, passthrough with no timeout wrapping.
+ * Preserves yield order — each chunk is yielded as it arrives.
+ *
+ * File-private — NOT exported.
+ */
+async function* asyncIteratorWithIdleTimeout<T>(
+  iterable: AsyncIterable<T>,
+  timeoutMs: number,
+  onTimeout?: () => void,
+): AsyncGenerator<T, void, undefined> {
+  const iterator = iterable[Symbol.asyncIterator]();
+
+  while (true) {
+    if (timeoutMs <= 0) {
+      const result = await iterator.next();
+      if (result.done) return;
+      yield result.value;
+      continue;
+    }
+
+    let timerHandle: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const nextPromise = iterator.next();
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timerHandle = setTimeout(() => {
+          onTimeout?.();
+          reject(new TimeoutExceededError(timeoutMs));
+        }, timeoutMs);
+      });
+
+      const result = await Promise.race([nextPromise, timeoutPromise]);
+      if (result.done) return;
+      yield result.value;
+    } finally {
+      if (timerHandle !== undefined) {
+        clearTimeout(timerHandle);
+      }
+    }
+  }
+}
+
+/**
  * Streaming pipeline - async generator that yields StreamChunk.
  *
  * @param input - Run input parameters
@@ -800,27 +846,13 @@ async function* executeStreamingPipeline(
         }
       }
 
-      // D-M3-2: Stream consumption with timeout fallback
-      // Wrap stream consumption with generateTimeoutMs timeout
-      let streamError: OrchestratorErrorClass | undefined;
-
-      // Consume stream and collect chunks (can be interrupted by timeout)
-      const chunks = await withTimeout(
-        (async () => {
-          const collected: StreamChunk[] = [];
-          for await (const chunk of streamIterable) {
-            collected.push(chunk);
-            if (chunk.type === 'error') {
-              streamError = chunk.error;
-            }
-          }
-          return collected;
-        })(),
+      // D-M3-2: Stream consumption with per-chunk idle timeout
+      // Each chunk is yielded as it arrives — no intermediate buffering.
+      // Idle timeout applies between chunks, not as a whole-stream timeout.
+      for await (const chunk of asyncIteratorWithIdleTimeout(
+        streamIterable,
         config.timeout.generateTimeoutMs,
-      );
-
-      // Process collected chunks and yield to consumer
-      for (const chunk of chunks) {
+      )) {
         switch (chunk.type) {
           case 'text':
             accumulatedText += chunk.delta;
@@ -835,7 +867,7 @@ async function* executeStreamingPipeline(
           case 'done':
             // Accumulate usage but do NOT yield — the provider's 'done' is an internal
             // "generation round ended" signal. The pipeline yields its own 'done' chunk
-            // at line 1053 after finalizePipeline completes.
+            // after finalizePipeline completes.
             if (chunk.usage) {
               accumulatedUsage.prompt = chunk.usage.prompt;
               accumulatedUsage.completion = chunk.usage.completion;
@@ -844,35 +876,12 @@ async function* executeStreamingPipeline(
             break;
 
           case 'error':
-            // streamError is already set above
             yield chunk;
             break;
 
           default:
             yield chunk;
         }
-      }
-
-      // Handle stream error (mid-stream error chunk)
-      if (streamError) {
-        try {
-          stateMachine.transition('FAILED');
-        } catch {
-          // Already in terminal state
-        }
-
-        eventBus.emit({
-          type: 'run.failed',
-          runId,
-          error: streamError,
-        });
-
-        logger.error('Run failed', {
-          runId,
-          error: streamError.message,
-          code: streamError.code,
-        });
-        return;
       }
 
       // After done or error: construct PromptResponse for hooks

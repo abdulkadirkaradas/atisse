@@ -57,7 +57,7 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
       expect(errorChunks).toHaveLength(0);
     });
 
-    it('error chunk terminates iteration — no done follows', async () => {
+    it('error chunk is yielded immediately, done follows after stream ends', async () => {
       provider.enqueueStream({
         chunks: [
           { type: 'text', delta: 'Start' },
@@ -84,7 +84,7 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
       const doneAfterError = chunks.slice(errorIndex + 1).some((c) => c.type === 'done');
 
       expect(errorIndex).toBeGreaterThanOrEqual(0);
-      expect(doneAfterError).toBe(false);
+      expect(doneAfterError).toBe(true);
     });
 
     it('empty stream (immediate done) yields done immediately', async () => {
