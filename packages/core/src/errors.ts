@@ -164,6 +164,21 @@ export class ContextProviderError extends OrchestratorError {
   }
 }
 
+/**
+ * Memory save failure during COMPLETING — infrastructure error, not retryable.
+ * The generation has already succeeded; a memory save failure does not invalidate
+ * the generation, but the run transitions to FAILED because the session state
+ * is not persisted.
+ */
+export class MemorySaveError extends OrchestratorError {
+  readonly code = 'MEMORY_SAVE_FAILED' as const;
+  readonly retryable = false;
+
+  constructor(cause?: unknown) {
+    super('Memory save failed during finalization', cause);
+  }
+}
+
 // ── Policy Errors ─────────────────────────────────────────────
 
 /**

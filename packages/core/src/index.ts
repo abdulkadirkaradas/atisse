@@ -56,6 +56,7 @@ export {
   ToolNotFoundError,
   ContextLoadError,
   ContextProviderError,
+  MemorySaveError,
   MaxRetriesExceededError,
   MaxToolRoundsExceededError,
   TokenLimitExceededError,
