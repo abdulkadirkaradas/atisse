@@ -188,9 +188,12 @@ packages/provider-{name}/
     "{provider-sdk}": ">=1.0.0"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean --splitting false",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "build": "tsup"
   }
 }
 ```
