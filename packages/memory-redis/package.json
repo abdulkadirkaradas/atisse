@@ -2,7 +2,7 @@
   "name": "@atisse/memory-redis",
   "version": "0.0.1",
   "private": true,
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=24"
   },
@@ -30,6 +30,6 @@
   },
   "peerDependencies": {
     "@atisse/core": "workspace:*",
-    "redis": "^5.0.0"
+    "redis": "^6.0.0"
   }
 }

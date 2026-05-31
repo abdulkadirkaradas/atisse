@@ -2,7 +2,7 @@
   "name": "@atisse/provider-anthropic",
   "version": "0.0.1",
   "private": true,
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=24"
   },
@@ -30,6 +30,6 @@
   },
   "peerDependencies": {
     "@atisse/core": "workspace:*",
-    "@anthropic-ai/sdk": "^0.55.0"
+    "@anthropic-ai/sdk": "^0.100.1"
   }
 }
