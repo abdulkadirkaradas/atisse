@@ -55,11 +55,13 @@ const orchestrator = new Orchestrator({
 **Dependency direction:**
 
 ```
-provider-openai  -->  core/interfaces.ts
-memory-redis     -->  core/interfaces.ts
-context-rag      -->  core/interfaces.ts
-                      ^
-                      core depends only on this file internally
+provider-anthropic  -->  core/interfaces.ts
+provider-openai     -->  core/interfaces.ts
+memory-inmemory     -->  core/interfaces.ts
+memory-redis        -->  core/interfaces.ts
+context-rag         -->  core/interfaces.ts
+                          ^
+                          core depends only on this file internally
 ```
 
 ---
