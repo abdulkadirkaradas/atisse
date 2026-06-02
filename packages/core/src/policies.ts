@@ -1,7 +1,6 @@
 import type { RetryPolicy, TimeoutPolicy, ToolPolicy } from './interfaces.js';
 import type { OrchestratorError } from './errors.js';
-import { isRetryable } from './errors.js';
-import { MaxRetriesExceededError, ProviderRateLimitError, TimeoutExceededError } from './errors.js';
+import { isRetryable, MaxRetriesExceededError, ProviderRateLimitError, RunCancelledError, TimeoutExceededError } from './errors.js';
 
 // ── Default Constants (internal — NOT exported) ───────────────────────────────────────
 
@@ -132,6 +131,47 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+/**
+ * Async sleep that can be aborted via AbortSignal.
+ * Resolves when the sleep duration elapses OR the signal is aborted.
+ * Does NOT throw when aborted — returns boolean indicating whether
+ * the sleep was aborted.
+ *
+ * @param ms - Sleep duration in milliseconds
+ * @param signal - Optional AbortSignal to cancel the sleep
+ * @returns true if the sleep was aborted, false if it completed normally
+ */
+async function abortableSleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+  if (!signal) {
+    await sleep(ms);
+    return false;
+  }
+
+  return new Promise<boolean>((resolve) => {
+    if (signal.aborted) {
+      resolve(true);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, ms);
+
+    const onAbort = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 // ── Core Retry Logic ─────────────────────────────────────────────────────────────────
 
 /**
@@ -145,6 +185,7 @@ async function executeWithRetry<T>(
   fn: () => Promise<T>,
   policy: RetryPolicy,
   onRetry?: (attempt: number, error: OrchestratorError) => void,
+  signal?: AbortSignal,
 ): Promise<T> {
   let attempt = 0;
   let lastError: OrchestratorError | undefined;
@@ -171,7 +212,10 @@ async function executeWithRetry<T>(
 
       // Calculate delay and sleep
       const delay = calculateDelay(attempt, policy, lastError);
-      await sleep(delay);
+      const aborted = await abortableSleep(delay, signal);
+      if (aborted) {
+        throw new RunCancelledError();
+      }
     }
   }
 
@@ -193,6 +237,7 @@ export {
   mergeRetryPolicy,
   mergeTimeoutPolicy,
   mergeToolPolicy,
+  abortableSleep,
   calculateDelay,
   withTimeout,
   sleep,
