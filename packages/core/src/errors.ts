@@ -309,6 +309,21 @@ export class HookExecutionError extends OrchestratorError {
   }
 }
 
+// ── Cancellation Errors ──────────────────────────────────────────
+
+/**
+ * Run was cancelled via AbortSignal.
+ * Not retryable — the user explicitly cancelled.
+ */
+export class RunCancelledError extends OrchestratorError {
+  readonly code = 'RUN_CANCELLED' as const;
+  readonly retryable = false;
+
+  constructor() {
+    super('Run was cancelled');
+  }
+}
+
 /**
  * Determines if an error is retryable.
  * Returns true only for OrchestratorError instances with retryable === true.

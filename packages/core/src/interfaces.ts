@@ -40,7 +40,8 @@ export type OrchestratorErrorCode =
   | 'INVALID_STATE_TRANSITION'
   | 'CONFIG_VALIDATION_FAILED'
   | 'HOOK_EXECUTION_FAILED'
-  | 'PIPELINE_INTERNAL_ERROR';
+  | 'PIPELINE_INTERNAL_ERROR'
+  | 'RUN_CANCELLED';
 
 /**
  * Serialized error payload for event bus.
@@ -252,6 +253,8 @@ export interface RunInput {
   sessionId?: string;
   stream?: boolean;
   metadata?: Record<string, unknown>;
+  /** Optional AbortSignal to cancel an in-flight run. */
+  signal?: AbortSignal;
 }
 
 /**
