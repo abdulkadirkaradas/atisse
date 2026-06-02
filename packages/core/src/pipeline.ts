@@ -59,6 +59,170 @@ function toEventErrorPayload(error: OrchestratorError): EventErrorPayload {
 }
 
 /**
+ * Build a PromptRequest from messages and config.
+ * Shared by both streaming and non-streaming paths.
+ */
+function buildPromptRequest(messages: Message[], config: ResolvedConfig): PromptRequest {
+  return {
+    messages,
+    ...(config.toolDefinitions ? { tools: config.toolDefinitions } : {}),
+    ...(config.timeout.generateTimeoutMs > 0
+      ? { signal: AbortSignal.timeout(config.timeout.generateTimeoutMs) }
+      : null),
+  };
+}
+
+type GenerationRoundResult =
+  | { action: 'continue'; toolAttempt: number }
+  | { action: 'break'; response: PromptResponse };
+
+type ExecutionResponse = { response: PromptResponse };
+
+type StreamingGenerationRoundResult =
+  | { action: 'continue'; chunksToYield: StreamChunk[] }
+  | { action: 'break'; response: PromptResponse; finalChunks: StreamChunk[] }
+  | { action: 'error'; error: OrchestratorError; chunksToYield: StreamChunk[] };
+
+/**
+ * Wraps an AsyncIterable with a per-iteration idle timeout.
+ * If the time between consecutive `next()` calls exceeds `timeoutMs`,
+ * the wrapped iterator throws TimeoutExceededError.
+ *
+ * When timeoutMs <= 0, passthrough with no timeout wrapping.
+ * Preserves yield order — each chunk is yielded as it arrives.
+ *
+ * File-private — NOT exported.
+ */
+async function* asyncIteratorWithIdleTimeout<T>(
+  iterable: AsyncIterable<T>,
+  timeoutMs: number,
+  onTimeout?: () => void,
+): AsyncGenerator<T, void, undefined> {
+  const iterator = iterable[Symbol.asyncIterator]();
+
+  while (true) {
+    if (timeoutMs <= 0) {
+      const result = await iterator.next();
+      if (result.done) return;
+      yield result.value;
+      continue;
+    }
+
+    let timerHandle: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const nextPromise = iterator.next();
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timerHandle = setTimeout(() => {
+          onTimeout?.();
+          reject(new TimeoutExceededError(timeoutMs));
+        }, timeoutMs);
+      });
+
+      const result = await Promise.race([nextPromise, timeoutPromise]);
+      if (result.done) return;
+      yield result.value;
+    } finally {
+      if (timerHandle !== undefined) {
+        clearTimeout(timerHandle);
+      }
+    }
+  }
+}
+
+/**
+ * Handle errors thrown during pipeline execution and convert to appropriate OrchestratorError subtypes if needed.
+ *
+ * @param error - the original error thrown
+ * @param config - the resolved configuration, used to determine timeout values for wrapping unknown errors
+ * @param timeoutMs - optional specific timeout value to use when wrapping unknown errors (e.g. generateTimeoutMs for generation step), falls back to totalTimeoutMs if not provided
+ * @returns - an OrchestratorError instance that can be emitted and logged consistently
+ * @remarks
+ * This function ensures that all errors emitted by the pipeline are instances of OrchestratorError (or its subtypes) for consistent handling downstream.
+ * It preserves the original error message and code when possible, and wraps unknown errors in a generic TimeoutExceededError to avoid losing error information.
+ * This is important for observability and debugging, as it ensures that all errors have a consistent structure and can be properly categorized in events and logs.
+ */
+function handleOrchestratorError(
+  error: unknown,
+  config: ResolvedConfig,
+  timeoutMs?: number,
+): OrchestratorError {
+  // ── FAILED path ────────────────────────────────────────
+  // Always properly propagate errors:
+  // 1. OrchestratorError subtypes -> pass through
+  // 2. Hook errors (beforeGenerate, afterGenerate, beforeTool, afterTool, beforeRun, afterRun) -> pass through
+  // 3. Any other Error -> pass through (don't convert to timeout)
+  // 4. Unknown errors -> wrap as generic OrchestratorError
+  let err: OrchestratorErrorClass;
+  if (error instanceof OrchestratorErrorClass) {
+    err = error;
+  } else if (error instanceof Error) {
+    // Wrap non-OrchestratorError instances to satisfy the StreamChunk error contract.
+    // PipelineInternalError is used (not HookExecutionError) because this catch
+    // block handles errors from the entire pipeline execution, not just hook code.
+    err = new PipelineInternalError(error.message, error);
+  } else {
+    // Unknown non-Error - wrap it
+    err = new TimeoutExceededError(timeoutMs ?? config.timeout.totalTimeoutMs);
+  }
+  return err;
+}
+
+/**
+ * Resolve profiles and emit profile.resolved event with details on active profile and overrides.
+ *
+ * @param runId - canonical runId for the execution (same across retries/fallbacks)
+ * @param input - original RunInput which may contain profile reference
+ * @param config - ResolvedConfig after profile merging, used to calculate overrides and hook count
+ * @param eventBus - Event bus to emit profile.resolved event
+ * @remarks
+ * This function is called at the start of both run() and stream() pipelines to ensure that profile resolution is handled consistently and the profile.resolved event is emitted with the canonical runId before any retries or fallbacks occur.
+ * The profile.resolved event includes details on which profile is active, what configuration keys it overrides, and how many hooks are registered after merging, providing valuable context for observability and debugging.
+ */
+function resolveProfiles(
+  runId: string,
+  input: RunInput,
+  config: ResolvedConfig,
+  eventBus: EventBus,
+) {
+  // Emit profile.resolved event with canonical runId
+  if (input.profile) {
+    const profiles = config.originalConfig?.profiles;
+    const profileName = input.profile;
+    const originalProfile = profiles?.[profileName];
+    if (profiles && originalProfile) {
+      // Calculate overrides based on what was set in the profile
+      const overrides = {
+        provider: originalProfile.provider !== undefined,
+        tools: originalProfile.tools !== undefined,
+        contextProviders: originalProfile.contextProviders !== undefined,
+        systemPrompt: originalProfile.systemPrompt !== undefined,
+        retry: originalProfile.retry !== undefined,
+        toolPolicy: originalProfile.toolPolicy !== undefined,
+      };
+
+      // Calculate total hook count
+      // config.hooks is already merged (base + profile) by resolveConfig()
+      const mergedHooks = normalizeHookRegistry(config.hooks);
+      const hookCount =
+        mergedHooks.beforeRun.length +
+        mergedHooks.afterRun.length +
+        mergedHooks.beforeGenerate.length +
+        mergedHooks.afterGenerate.length +
+        mergedHooks.beforeTool.length +
+        mergedHooks.afterTool.length;
+
+      eventBus.emit({
+        type: 'profile.resolved',
+        runId,
+        profileName: input.profile,
+        overrides,
+        hookCount,
+      });
+    }
+  }
+}
+
+/**
  * Helper 1: Steps 1–4 (INITIALIZED → CONTEXT_INJECTING → CONTEXT_INJECTED → PROMPT_COMPOSED)
  *
  * Consolidates identical initialization from both streaming and non-streaming paths:
@@ -381,343 +545,685 @@ async function finalizePipeline(
 }
 
 /**
- * Execute the orchestration pipeline.
+ * Handle a provider error: attempt fallback if eligible, otherwise
+ * throw or return continue signal.
  *
- * @param input - Run input parameters
- * @param config - Resolved configuration (after profile merge)
- * @param eventBus - Event bus for emitting events
- * @param logger - Logger instance
- * @returns RunOutput or AsyncIterable<StreamChunk>
+ * - MaxRetriesExceededError + fallbackProvider: switch to fallback, try once
+ * - Non-retryable: rethrow
+ * - Retryable without fallback: sleep, return continue
+ *
+ * File-private — NOT exported.
  */
-export async function executePipeline(
-  input: RunInput,
+async function handleProviderError(
+  err: OrchestratorError,
+  promptRequest: PromptRequest,
+  providerAttempt: number,
+  toolAttempt: number,
   config: ResolvedConfig,
+  stateMachine: LifecycleStateMachine,
   eventBus: EventBus,
   logger: Logger,
-): Promise<RunOutput | AsyncIterable<StreamChunk>> {
-  // Route to streaming pipeline if stream === true
-  if (input.stream === true) {
-    return executeStreamingPipeline(input, config, eventBus, logger);
-  }
+  runId: string,
+): Promise<{ response: PromptResponse } | { action: 'continue'; toolAttempt: number }> {
+  // Check for fallback
+  if (err instanceof MaxRetriesExceededError && config.fallbackProvider) {
+    // FALLBACKING
+    stateMachine.transition('FALLBACKING');
+    logger.warn('Fallback triggered', { runId, reason: err.code });
+    eventBus.emit({
+      type: 'fallback.triggered',
+      runId,
+      reason: err.code,
+    });
 
-  // Non-streaming path follows the original implementation
-  // Helper to run the main execution with top-level timeout
-  try {
-    return await withTimeout(_execute(), config.timeout.totalTimeoutMs);
-  } catch (error) {
-    // Handle timeout from the race - rethrow TimeoutExceededError
-    if (error instanceof TimeoutExceededError) {
-      throw error;
+    // Try fallback once with no retry
+    try {
+      const response = await config.fallbackProvider.generate(promptRequest);
+      stateMachine.transition('GENERATING');
+      return { response };
+    } catch (fallbackError: unknown) {
+      const fallbackErr = handleOrchestratorError(
+        fallbackError,
+        config,
+        config.timeout.generateTimeoutMs,
+      );
+      throw new FallbackExhaustedError(err, fallbackErr);
     }
-    throw error;
   }
 
-  // Internal async function containing all steps
-  async function _execute(): Promise<RunOutput> {
-    // Variables hoisted outside the try block so they are accessible in catch for FAILED handling.
-    // initializePipeline returns these, but if it throws, we use the local stateMachine for FAILED transition.
-    let runId = '';
-    let stateMachine = new LifecycleStateMachine();
-    let activeProvider: AIProvider = config.provider;
-    let roundCounter = 0;
-    let providerAttempt = 0;
-    let toolAttempt = 0;
+  if (!isRetryable(err)) {
+    // Not retryable - throw to FAILED
+    throw err;
+  }
 
-    // Loop for retry/backoff logic
-    while (true) {
-      try {
-        // ── Steps 1–4 — initializePipeline ──────────────────
-        const init = await initializePipeline(input, config, eventBus, logger);
-        activeProvider = init.activeProvider;
-        runId = init.runId;
-        stateMachine = init.stateMachine;
-        const { startTime, trackDuration, hooks, activeProfile, tempMessages } = init;
-        const messages = init.messages;
-        const allToolResults: ToolResult[] = [];
+  // Retryable without fallback - continue loop
+  const delayMs = calculateDelay(providerAttempt, config.retry, err);
+  await sleep(delayMs);
+  stateMachine.transition('GENERATING');
+  // Note: toolAttempt is passed through unchanged in GenerationRoundResult
+  return { action: 'continue', toolAttempt };
+}
 
-        let finishReason: 'stop' | 'tool_calls' | 'length' = 'stop';
-        let response: PromptResponse;
+/**
+ * Execute a single tool round with error handling for retryable ToolExecutionError
+ * and fail-fast for ToolValidationError / ToolNotFoundError.
+ *
+ * Transitions to TOOL_EXECUTING, executes tools, and handles errors.
+ * Returns a GenerationRoundResult with 'continue' action and updated toolAttempt.
+ * Throws on fail-fast errors (ToolValidationError, ToolNotFoundError).
+ *
+ * File-private — NOT exported.
+ */
+async function executeToolRoundWithErrorHandling(
+  roundNumber: number,
+  toolCalls: ToolCall[],
+  config: ResolvedConfig,
+  hooks: HookRegistry,
+  eventBus: EventBus,
+  logger: Logger,
+  runId: string,
+  stateMachine: LifecycleStateMachine,
+  trackDuration: () => number,
+  messages: Message[],
+  allToolResults: ToolResult[],
+  input: RunInput,
+  toolAttempt: number,
+): Promise<GenerationRoundResult> {
+  stateMachine.transition('TOOL_EXECUTING');
+  logger.debug('State transition: TOOL_EXECUTING', { runId, round: roundNumber });
 
-        // ── Step 5 — GENERATING (+ retry loop) ──────────────
-        while (true) {
-          stateMachine.transition('GENERATING');
-          logger.debug('State transition: GENERATING', { runId });
+  try {
+    await executeToolRound(
+      roundNumber,
+      toolCalls,
+      config,
+      hooks,
+      eventBus,
+      logger,
+      runId,
+      trackDuration,
+      messages,
+      allToolResults,
+      input,
+    );
+  } catch (error: unknown) {
+    const err =
+      error instanceof OrchestratorErrorClass ? error : new ToolExecutionError('unknown', error);
 
-          // Run beforeGenerate hooks
-          await runHooks(hooks.beforeGenerate, { messages, input, runId });
+    // ToolValidationError, ToolNotFoundError -> FAILED (fail-fast)
+    if (err instanceof ToolValidationError || err instanceof ToolNotFoundError) {
+      throw err;
+    }
 
-          eventBus.emit({
-            type: 'generate.started',
-            runId,
-            messageCount: messages.length,
-          });
+    // ToolExecutionError -> emit failed event and retry with exponential backoff
+    const toolCallName = err instanceof ToolExecutionError ? err.toolName : 'unknown';
 
-          // Build PromptRequest
-          const promptTools = config.toolDefinitions;
+    eventBus.emit({
+      type: 'tool.failed',
+      runId,
+      toolName: toolCallName,
+      error: toEventErrorPayload(err),
+    });
 
-          const promptRequest: PromptRequest = {
-            messages,
-            ...(promptTools ? { tools: promptTools } : {}),
-            ...(config.timeout.generateTimeoutMs > 0
-              ? { signal: AbortSignal.timeout(config.timeout.generateTimeoutMs) }
-              : null),
-          };
+    const delayMs = calculateDelay(toolAttempt, config.retry, err);
+    await sleep(delayMs);
+    return { action: 'continue', toolAttempt: toolAttempt + 1 };
+  }
 
-          // Try to generate with retry
-          try {
-            response = await executeWithRetry(
-              () => activeProvider.generate(promptRequest),
-              config.retry,
-              (retryAttempt, error) => {
-                providerAttempt = retryAttempt;
-                const delayMs = calculateDelay(retryAttempt, config.retry, error);
+  // Success — toolAttempt unchanged
+  return { action: 'continue', toolAttempt };
+}
 
-                // Transition to RETRYING state - pause before next generation attempt
-                stateMachine.transition('RETRYING');
-                logger.warn('Retrying', {
-                  runId,
-                  attempt: retryAttempt,
-                  reason: error.code,
-                  delayMs,
-                });
+/**
+ * Execute a single generation round within the non-streaming pipeline.
+ *
+ * Handles GENERATING state transition, provider call with retry,
+ * fallback, tool execution routing, and round counter management.
+ *
+ * Returns GenerationRoundResult directing the caller to continue or break.
+ *
+ * File-private — NOT exported.
+ */
+async function executeGenerationRound(
+  roundCounter: number,
+  toolAttempt: number,
+  activeProvider: AIProvider,
+  config: ResolvedConfig,
+  hooks: HookRegistry,
+  eventBus: EventBus,
+  logger: Logger,
+  runId: string,
+  stateMachine: LifecycleStateMachine,
+  trackDuration: () => number,
+  messages: Message[],
+  tempMessages: [Message, Message],
+  allToolResults: ToolResult[],
+  input: RunInput,
+): Promise<GenerationRoundResult> {
+  stateMachine.transition('GENERATING');
+  logger.debug('State transition: GENERATING', { runId });
 
-                eventBus.emit({
-                  type: 'retry.attempt',
-                  runId,
-                  attempt: retryAttempt,
-                  reason: error.code,
-                  delayMs,
-                });
-              },
-            );
-          } catch (error: unknown) {
-            const err = handleOrchestratorError(error, config, config.timeout.generateTimeoutMs);
+  // Run beforeGenerate hooks
+  await runHooks(hooks.beforeGenerate, { messages, input, runId });
 
-            // Check for fallback
-            if (err instanceof MaxRetriesExceededError && config.fallbackProvider) {
-              // FALLBACKING
-              stateMachine.transition('FALLBACKING');
-              logger.warn('Fallback triggered', { runId, reason: err.code });
-              eventBus.emit({
-                type: 'fallback.triggered',
-                runId,
-                reason: err.code,
-              });
+  eventBus.emit({
+    type: 'generate.started',
+    runId,
+    messageCount: messages.length,
+  });
 
-              // Switch to fallback provider
-              activeProvider = config.fallbackProvider;
+  // Build PromptRequest using shared helper
+  const promptRequest = buildPromptRequest(messages, config);
 
-              // Try fallback once with no retry
-              try {
-                response = await activeProvider.generate(promptRequest);
-              } catch (fallbackError: unknown) {
-                const fallbackErr = handleOrchestratorError(
-                  fallbackError,
-                  config,
-                  config.timeout.generateTimeoutMs,
-                );
-                throw new FallbackExhaustedError(err, fallbackErr);
-              }
+  let providerAttempt = 0;
+  let response: PromptResponse;
 
-              break;
-            }
+  // Try to generate with retry
+  try {
+    response = await executeWithRetry(
+      () => activeProvider.generate(promptRequest),
+      config.retry,
+      (retryAttempt, error) => {
+        providerAttempt = retryAttempt;
+        const delayMs = calculateDelay(retryAttempt, config.retry, error);
 
-            // Not retryable - throw to FAILED
-            if (!isRetryable(err)) {
-              throw err;
-            }
-
-            // Retryable without fallback - continue loop
-            const delayMs = calculateDelay(providerAttempt, config.retry, err);
-            await sleep(delayMs);
-            // Transition back to GENERATING for retry attempt
-            stateMachine.transition('GENERATING');
-            continue;
-          }
-
-          // Success - check finish reason
-          finishReason = response.finishReason;
-
-          eventBus.emit({
-            type: 'generate.completed',
-            runId,
-            durationMs: trackDuration(),
-            finishReason,
-          });
-
-          // Store assistant message
-          const assistantContent = response.text;
-          const assistantToolCalls = response.toolCalls;
-          if (assistantToolCalls && assistantToolCalls.length > 0) {
-            tempMessages[1] = {
-              role: 'assistant',
-              content: assistantContent,
-              toolCalls: assistantToolCalls,
-            };
-          } else {
-            tempMessages[1] = { role: 'assistant', content: assistantContent };
-          }
-
-          // Handle tool_calls
-          if (
-            finishReason === 'tool_calls' &&
-            response.toolCalls &&
-            response.toolCalls.length > 0
-          ) {
-            // ── Step 6 — TOOL_EXECUTING ───────────────────────
-            roundCounter++;
-            if (roundCounter >= config.toolPolicy.maxToolRounds) {
-              throw new MaxToolRoundsExceededError(roundCounter, config.toolPolicy.maxToolRounds);
-            }
-
-            stateMachine.transition('TOOL_EXECUTING');
-            logger.debug('State transition: TOOL_EXECUTING', { runId, round: roundCounter });
-
-            // Execute tools with fail-fast
-            try {
-              await executeToolRound(
-                roundCounter,
-                response.toolCalls,
-                config,
-                hooks,
-                eventBus,
-                logger,
-                runId,
-                trackDuration,
-                messages,
-                allToolResults,
-                input,
-              );
-            } catch (error: unknown) {
-              const err =
-                error instanceof OrchestratorErrorClass
-                  ? error
-                  : new ToolExecutionError('unknown', error);
-
-              // ToolValidationError, ToolNotFoundError -> FAILED (fail-fast)
-              if (err instanceof ToolValidationError || err instanceof ToolNotFoundError) {
-                throw err;
-              }
-
-              // ToolExecutionError -> emit failed event and retry
-              const toolCallName = err instanceof ToolExecutionError ? err.toolName : 'unknown';
-
-              eventBus.emit({
-                type: 'tool.failed',
-                runId,
-                toolName: toolCallName,
-                error: toEventErrorPayload(err),
-              });
-
-              // Retry — use independent toolAttempt counter
-              const delayMs = calculateDelay(toolAttempt, config.retry, err);
-              toolAttempt++;
-              await sleep(delayMs);
-              continue;
-            }
-            continue;
-          }
-
-          // No tool calls or finishReason is 'stop' | 'length'
-          break;
-        }
-
-        // Run afterGenerate hooks (after tool loop completes, before finalization)
-        try {
-          await runHooks(hooks.afterGenerate, { messages, response, input, runId });
-        } catch (hookError: unknown) {
-          const err = handleOrchestratorError(hookError, config);
-          throw err;
-        }
-
-        // ── Steps 9–10 — COMPLETING → COMPLETED ────────────
-        return await finalizePipeline(
-          stateMachine,
-          hooks,
-          eventBus,
-          logger,
+        // Transition to RETRYING state - pause before next generation attempt
+        stateMachine.transition('RETRYING');
+        logger.warn('Retrying', {
           runId,
-          startTime,
-          tempMessages,
-          response.usage,
-          input,
-          allToolResults,
-          activeProfile,
-          config.memoryAdapter,
-          response.text,
-        );
-      } catch (error: unknown) {
-        const err: OrchestratorErrorClass = handleOrchestratorError(error, config);
-
-        // Attempt transition to FAILED
-        try {
-          stateMachine.transition('FAILED');
-        } catch {
-          // Already in a terminal state
-        }
+          attempt: retryAttempt,
+          reason: error.code,
+          delayMs,
+        });
 
         eventBus.emit({
-          type: 'run.failed',
+          type: 'retry.attempt',
           runId,
-          error: err,
+          attempt: retryAttempt,
+          reason: error.code,
+          delayMs,
         });
-
-        logger.error('Run failed', {
-          runId,
-          error: err.message,
-          code: err.code,
-        });
-
-        throw err;
-      }
+      },
+    );
+  } catch (error: unknown) {
+    const err = handleOrchestratorError(error, config, config.timeout.generateTimeoutMs);
+    const result = await handleProviderError(
+      err,
+      promptRequest,
+      providerAttempt,
+      toolAttempt,
+      config,
+      stateMachine,
+      eventBus,
+      logger,
+      runId,
+    );
+    if ('action' in result) {
+      return result; // { action: 'continue', toolAttempt }
     }
+    response = result.response; // Fallback succeeded — fall through
+  }
+
+  // Transition back to GENERATING if we were in RETRYING state
+  if (stateMachine.state === 'RETRYING') {
+    stateMachine.transition('GENERATING');
+  }
+
+  // Success - check finish reason
+  const finishReason = response.finishReason;
+
+  eventBus.emit({
+    type: 'generate.completed',
+    runId,
+    durationMs: trackDuration(),
+    finishReason,
+  });
+
+  // Store assistant message
+  const assistantContent = response.text;
+  const assistantToolCalls = response.toolCalls;
+  if (assistantToolCalls && assistantToolCalls.length > 0) {
+    tempMessages[1] = {
+      role: 'assistant',
+      content: assistantContent,
+      toolCalls: assistantToolCalls,
+    };
+  } else {
+    tempMessages[1] = { role: 'assistant', content: assistantContent };
+  }
+
+  // Handle tool_calls
+  if (finishReason === 'tool_calls' && response.toolCalls && response.toolCalls.length > 0) {
+    // ── Step 6 — TOOL_EXECUTING ───────────────────────
+    if (roundCounter >= config.toolPolicy.maxToolRounds) {
+      throw new MaxToolRoundsExceededError(roundCounter, config.toolPolicy.maxToolRounds);
+    }
+
+    return await executeToolRoundWithErrorHandling(
+      roundCounter + 1,
+      response.toolCalls,
+      config,
+      hooks,
+      eventBus,
+      logger,
+      runId,
+      stateMachine,
+      trackDuration,
+      messages,
+      allToolResults,
+      input,
+      toolAttempt,
+    );
+  }
+
+  // No tool calls or finishReason is 'stop' | 'length'
+  return { action: 'break', response };
+}
+
+/**
+ * Execute all generation rounds within the non-streaming pipeline.
+ *
+ * Owns the generation while(true) loop that orchestrates the cycle of:
+ *   GENERATING → (tool_calls → TOOL_EXECUTING → GENERATING) → stop/length
+ *
+ * Manages roundCounter and toolAttempt across rounds.
+ * Returns the final PromptResponse when a break condition is reached.
+ *
+ * File-private — NOT exported.
+ */
+async function executeAllGenerationRounds(
+  activeProvider: AIProvider,
+  config: ResolvedConfig,
+  hooks: HookRegistry,
+  eventBus: EventBus,
+  logger: Logger,
+  runId: string,
+  stateMachine: LifecycleStateMachine,
+  trackDuration: () => number,
+  messages: Message[],
+  tempMessages: [Message, Message],
+  allToolResults: ToolResult[],
+  input: RunInput,
+): Promise<ExecutionResponse> {
+  let roundCounter = 0;
+  let toolAttempt = 0;
+
+  while (true) {
+    const result = await executeGenerationRound(
+      roundCounter,
+      toolAttempt,
+      activeProvider,
+      config,
+      hooks,
+      eventBus,
+      logger,
+      runId,
+      stateMachine,
+      trackDuration,
+      messages,
+      tempMessages,
+      allToolResults,
+      input,
+    );
+
+    if (result.action === 'continue') {
+      roundCounter++;
+      toolAttempt = result.toolAttempt;
+      continue;
+    }
+
+    return { response: result.response };
   }
 }
 
 /**
- * Wraps an AsyncIterable with a per-iteration idle timeout.
- * If the time between consecutive `next()` calls exceeds `timeoutMs`,
- * the wrapped iterator throws TimeoutExceededError.
+ * Execute the non-streaming orchestration pipeline (promoted from nested _execute).
  *
- * When timeoutMs <= 0, passthrough with no timeout wrapping.
- * Preserves yield order — each chunk is yielded as it arrives.
+ * Initializes the pipeline, runs generation rounds, and finalizes.
+ * All execution state is local to this function.
  *
  * File-private — NOT exported.
  */
-async function* asyncIteratorWithIdleTimeout<T>(
-  iterable: AsyncIterable<T>,
-  timeoutMs: number,
-  onTimeout?: () => void,
-): AsyncGenerator<T, void, undefined> {
-  const iterator = iterable[Symbol.asyncIterator]();
+async function executeNonStreamingPipeline(
+  input: RunInput,
+  config: ResolvedConfig,
+  eventBus: EventBus,
+  logger: Logger,
+): Promise<RunOutput> {
+  let runId = '';
+  let stateMachine = new LifecycleStateMachine();
+
+  try {
+    // ── Steps 1–4 — initializePipeline ──────────────────
+    const init = await initializePipeline(input, config, eventBus, logger);
+    runId = init.runId;
+    stateMachine = init.stateMachine;
+    const { startTime, trackDuration, hooks, activeProfile, tempMessages } = init;
+    const messages = init.messages;
+    const allToolResults: ToolResult[] = [];
+
+    // ── Step 5 — GENERATING (generation rounds) ─────────
+    const { response } = await executeAllGenerationRounds(
+      init.activeProvider,
+      config,
+      hooks,
+      eventBus,
+      logger,
+      runId,
+      stateMachine,
+      trackDuration,
+      messages,
+      tempMessages,
+      allToolResults,
+      input,
+    );
+
+    // Run afterGenerate hooks (after tool loop completes, before finalization)
+    try {
+      await runHooks(hooks.afterGenerate, { messages, response, input, runId });
+    } catch (hookError: unknown) {
+      throw handleOrchestratorError(hookError, config);
+    }
+
+    // ── Steps 9–10 — COMPLETING → COMPLETED ────────────
+    return await finalizePipeline(
+      stateMachine,
+      hooks,
+      eventBus,
+      logger,
+      runId,
+      startTime,
+      tempMessages,
+      response.usage,
+      input,
+      allToolResults,
+      activeProfile,
+      config.memoryAdapter,
+      response.text,
+    );
+  } catch (error: unknown) {
+    const err: OrchestratorErrorClass = handleOrchestratorError(error, config);
+
+    // Attempt transition to FAILED
+    try {
+      stateMachine.transition('FAILED');
+    } catch {
+      // Already in a terminal state
+    }
+
+    eventBus.emit({
+      type: 'run.failed',
+      runId,
+      error: err,
+    });
+
+    logger.error('Run failed', {
+      runId,
+      error: err.message,
+      code: err.code,
+    });
+
+    throw err;
+  }
+}
+
+/**
+ * Execute a single streaming generation round.
+ *
+ * Handles stream setup with retry, stream consumption with chunk collection,
+ * PromptResponse construction, and tool execution routing.
+ * Instead of yielding chunks directly, collects them into arrays for the caller to yield.
+ *
+ * File-private — NOT exported.
+ */
+async function executeStreamingGenerationRound(
+  roundCounter: number,
+  toolAttempt: number,
+  activeProvider: AIProvider,
+  config: ResolvedConfig,
+  hooks: HookRegistry,
+  eventBus: EventBus,
+  logger: Logger,
+  runId: string,
+  stateMachine: LifecycleStateMachine,
+  trackDuration: () => number,
+  messages: Message[],
+  tempMessages: [Message, Message],
+  allToolResults: ToolResult[],
+  input: RunInput,
+  accumulatedUsage: TokenUsage,
+  accumulatedText: string,
+  pendingToolCalls: ToolCall[],
+): Promise<{
+  result: StreamingGenerationRoundResult;
+  accumulatedUsage: TokenUsage;
+  accumulatedText: string;
+  pendingToolCalls: ToolCall[];
+  toolAttempt: number;
+}> {
+  stateMachine.transition('GENERATING');
+  logger.debug('State transition: GENERATING', { runId });
+
+  await runHooks(hooks.beforeGenerate, { messages, input, runId });
+
+  eventBus.emit({
+    type: 'generate.started',
+    runId,
+    messageCount: messages.length,
+  });
+
+  const promptRequest = buildPromptRequest(messages, config);
+
+  // D-M3-1: Full retry loop for streaming pre-stream errors
+  let attempt = 0;
+  let streamIterable: AsyncIterable<StreamChunk> | undefined;
 
   while (true) {
-    if (timeoutMs <= 0) {
-      const result = await iterator.next();
-      if (result.done) return;
-      yield result.value;
-      continue;
-    }
-
-    let timerHandle: ReturnType<typeof setTimeout> | undefined;
     try {
-      const nextPromise = iterator.next();
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timerHandle = setTimeout(() => {
-          onTimeout?.();
-          reject(new TimeoutExceededError(timeoutMs));
-        }, timeoutMs);
-      });
-
-      const result = await Promise.race([nextPromise, timeoutPromise]);
-      if (result.done) return;
-      yield result.value;
-    } finally {
-      if (timerHandle !== undefined) {
-        clearTimeout(timerHandle);
+      // Validated at run() entry: provider.generateStream exists when stream === true
+      if (activeProvider.capabilities.streaming === false) {
+        throw new ConfigValidationError(['provider does not support streaming']);
       }
+      if (!activeProvider.generateStream) {
+        throw new ConfigValidationError(['provider does not implement generateStream']);
+      }
+      streamIterable = await activeProvider.generateStream(promptRequest);
+      break; // Success - exit retry loop
+    } catch (error: unknown) {
+      const err: OrchestratorErrorClass = handleOrchestratorError(error, config);
+
+      // Non-retryable errors exit immediately
+      if (!isRetryable(err)) {
+        return {
+          result: { action: 'error', error: err, chunksToYield: [] },
+          accumulatedUsage,
+          accumulatedText,
+          pendingToolCalls,
+          toolAttempt,
+        };
+      }
+
+      attempt++;
+
+      // Check if max attempts reached
+      if (attempt >= config.retry.maxAttempts) {
+        const maxRetriesErr = new MaxRetriesExceededError(attempt, err);
+        return {
+          result: { action: 'error', error: maxRetriesErr, chunksToYield: [] },
+          accumulatedUsage,
+          accumulatedText,
+          pendingToolCalls,
+          toolAttempt,
+        };
+      }
+
+      stateMachine.transition('RETRYING');
+      const delayMs = calculateDelay(attempt, config.retry, err);
+      logger.warn('Retrying', { runId, attempt, reason: err.code, delayMs });
+      eventBus.emit({ type: 'retry.attempt', runId, attempt, reason: err.code, delayMs });
+      await sleep(delayMs);
+      stateMachine.transition('GENERATING');
     }
   }
+
+  // D-M3-2: Stream consumption with per-chunk idle timeout
+  // Collect all chunks into arrays instead of yielding directly.
+  const chunksToYield: StreamChunk[] = [];
+
+  for await (const chunk of asyncIteratorWithIdleTimeout(
+    streamIterable,
+    config.timeout.generateTimeoutMs,
+  )) {
+    switch (chunk.type) {
+      case 'text':
+        accumulatedText += chunk.delta;
+        chunksToYield.push(chunk);
+        break;
+
+      case 'tool_call':
+        pendingToolCalls.push(chunk.toolCall);
+        chunksToYield.push(chunk);
+        break;
+
+      case 'done':
+        // Accumulate usage but do NOT yield — the provider's 'done' is an internal
+        // "generation round ended" signal. The pipeline yields its own 'done' chunk
+        // after finalizePipeline completes.
+        if (chunk.usage) {
+          accumulatedUsage.prompt = chunk.usage.prompt;
+          accumulatedUsage.completion = chunk.usage.completion;
+          accumulatedUsage.total = chunk.usage.total;
+        }
+        break;
+
+      case 'error':
+        chunksToYield.push(chunk);
+        break;
+
+      default:
+        chunksToYield.push(chunk);
+    }
+  }
+
+  // After done or error: construct PromptResponse for hooks
+  const response: PromptResponse = {
+    text: accumulatedText,
+    toolCalls: pendingToolCalls,
+    usage: accumulatedUsage,
+    finishReason: pendingToolCalls.length > 0 ? 'tool_calls' : 'stop',
+  };
+
+  const finishReason = response.finishReason;
+
+  eventBus.emit({
+    type: 'generate.completed',
+    runId,
+    durationMs: trackDuration(),
+    finishReason,
+  });
+
+  tempMessages[1] = {
+    role: 'assistant',
+    content: accumulatedText,
+    ...(pendingToolCalls.length > 0 ? { toolCalls: pendingToolCalls } : null),
+  };
+
+  // Tool execution
+  if (finishReason === 'tool_calls' && pendingToolCalls.length > 0) {
+    // Use roundCounter + 1 for 1-indexed check and event round numbers
+    // (stream consumption happens before this check, so we must use 1-indexed
+    // comparison against maxToolRounds to limit the exact number of streams consumed)
+    const nextRound = roundCounter + 1;
+    if (nextRound >= config.toolPolicy.maxToolRounds) {
+      const err = new MaxToolRoundsExceededError(nextRound, config.toolPolicy.maxToolRounds);
+      return {
+        result: { action: 'error', error: err, chunksToYield },
+        accumulatedUsage,
+        accumulatedText,
+        pendingToolCalls,
+        toolAttempt,
+      };
+    }
+
+    stateMachine.transition('TOOL_EXECUTING');
+    logger.debug('State transition: TOOL_EXECUTING', { runId, round: nextRound });
+
+    try {
+      const toolResults = await executeToolRound(
+        nextRound,
+        pendingToolCalls,
+        config,
+        hooks,
+        eventBus,
+        logger,
+        runId,
+        trackDuration,
+        messages,
+        allToolResults,
+        input,
+      );
+
+      // Collect tool_result chunks
+      for (const result of toolResults) {
+        chunksToYield.push({ type: 'tool_result', toolResult: result });
+      }
+    } catch (error: unknown) {
+      const err =
+        error instanceof OrchestratorErrorClass ? error : new ToolExecutionError('unknown', error);
+
+      // ToolValidationError, ToolNotFoundError -> return error (fail-fast)
+      if (err instanceof ToolValidationError || err instanceof ToolNotFoundError) {
+        return {
+          result: { action: 'error', error: err, chunksToYield },
+          accumulatedUsage,
+          accumulatedText,
+          pendingToolCalls,
+          toolAttempt,
+        };
+      }
+
+      // ToolExecutionError -> emit failed event and retry
+      const toolCallName = err instanceof ToolExecutionError ? err.toolName : 'unknown';
+
+      eventBus.emit({
+        type: 'tool.failed',
+        runId,
+        toolName: toolCallName,
+        error: toEventErrorPayload(err),
+      });
+
+      // Backoff before retry — use toolAttempt for exponential backoff
+      const delayMs = calculateDelay(toolAttempt, config.retry, err);
+      await sleep(delayMs);
+
+      // Reset streaming state for retry
+      return {
+        result: { action: 'continue', chunksToYield },
+        accumulatedUsage,
+        accumulatedText,
+        pendingToolCalls: [],
+        toolAttempt: toolAttempt + 1,
+      };
+    }
+
+    // Tool execution succeeded - reset streaming state for next round
+    return {
+      result: { action: 'continue', chunksToYield },
+      accumulatedUsage,
+      accumulatedText,
+      pendingToolCalls: [],
+      toolAttempt,
+    };
+  }
+
+  // No tool calls or finishReason is 'stop' | 'length'
+  return {
+    result: { action: 'break', response, finalChunks: chunksToYield },
+    accumulatedUsage,
+    accumulatedText,
+    pendingToolCalls,
+    toolAttempt,
+  };
 }
 
 /**
@@ -736,11 +1242,12 @@ async function* executeStreamingPipeline(
   logger: Logger,
 ): AsyncGenerator<StreamChunk> {
   // Streaming-specific state
-  const accumulatedUsage = { prompt: 0, completion: 0, total: 0 };
+  let accumulatedUsage = { prompt: 0, completion: 0, total: 0 };
   const allToolResults: ToolResult[] = [];
   let accumulatedText = '';
   let pendingToolCalls: ToolCall[] = [];
   let roundCounter = 0;
+  let toolAttempt = 0;
   // Variables hoisted for catch block access
   let runId = '';
   let stateMachine = new LifecycleStateMachine();
@@ -763,244 +1270,62 @@ async function* executeStreamingPipeline(
 
     // ── Step 5 — GENERATING (Streaming) ─────────────────────
     while (true) {
-      stateMachine.transition('GENERATING');
-      logger.debug('State transition: GENERATING', { runId });
-
-      await runHooks(hooks.beforeGenerate, { messages, input, runId });
-
-      eventBus.emit({
-        type: 'generate.started',
+      const roundResult = await executeStreamingGenerationRound(
+        roundCounter,
+        toolAttempt,
+        activeProvider,
+        config,
+        hooks,
+        eventBus,
+        logger,
         runId,
-        messageCount: messages.length,
-      });
-
-      const promptTools = config.toolDefinitions;
-
-      const promptRequest: PromptRequest = {
+        stateMachine,
+        trackDuration,
         messages,
-        ...(promptTools ? { tools: promptTools } : {}),
-        ...(config.timeout.generateTimeoutMs > 0
-          ? { signal: AbortSignal.timeout(config.timeout.generateTimeoutMs) }
-          : null),
-      };
+        tempMessages,
+        allToolResults,
+        input,
+        accumulatedUsage,
+        accumulatedText,
+        pendingToolCalls,
+      );
 
-      // D-M3-1: Full retry loop with maxAttempts for streaming pre-stream errors
-      // (generateStream Promise rejection — not mid-stream chunk errors)
-      let attempt = 0;
-      let streamToolAttempt = 0;
-      let streamIterable: AsyncIterable<StreamChunk> | undefined;
+      // Update mutable state from return
+      accumulatedUsage = roundResult.accumulatedUsage;
+      accumulatedText = roundResult.accumulatedText;
+      pendingToolCalls = roundResult.pendingToolCalls;
+      toolAttempt = roundResult.toolAttempt;
 
-      while (true) {
-        try {
-          // Validated at run() entry: provider.generateStream exists when stream === true
-          if (activeProvider.capabilities.streaming === false) {
-            throw new ConfigValidationError(['provider does not support streaming']);
-          }
-          if (!activeProvider.generateStream) {
-            throw new ConfigValidationError(['provider does not implement generateStream']);
-          }
-          streamIterable = await activeProvider.generateStream(promptRequest);
-          break; // Success - exit retry loop
-        } catch (error: unknown) {
-          const err: OrchestratorErrorClass = handleOrchestratorError(error, config);
+      const { result } = roundResult;
 
-          // Non-retryable errors exit immediately
-          if (!isRetryable(err)) {
-            yield { type: 'error', error: err };
-            try {
-              stateMachine.transition('FAILED');
-            } catch {
-              // Already in terminal state
-            }
-            eventBus.emit({ type: 'run.failed', runId, error: err });
-            logger.error('Run failed', { runId, error: err.message, code: err.code });
-            return;
-          }
-
-          attempt++;
-
-          // Check if max attempts reached
-          if (attempt >= config.retry.maxAttempts) {
-            const maxRetriesErr = new MaxRetriesExceededError(attempt, err);
-            yield { type: 'error', error: maxRetriesErr };
-            try {
-              stateMachine.transition('FAILED');
-            } catch {
-              // Already in terminal state
-            }
-            eventBus.emit({ type: 'run.failed', runId, error: maxRetriesErr });
-            logger.error('Run failed', {
-              runId,
-              error: maxRetriesErr.message,
-              code: maxRetriesErr.code,
-            });
-            return;
-          }
-
-          stateMachine.transition('RETRYING');
-          const delayMs = calculateDelay(attempt, config.retry, err);
-          logger.warn('Retrying', { runId, attempt, reason: err.code, delayMs });
-          eventBus.emit({ type: 'retry.attempt', runId, attempt, reason: err.code, delayMs });
-          await sleep(delayMs);
-          stateMachine.transition('GENERATING');
+      if (result.action === 'continue') {
+        for (const chunk of result.chunksToYield) {
+          yield chunk;
         }
-      }
-
-      // D-M3-2: Stream consumption with per-chunk idle timeout
-      // Each chunk is yielded as it arrives — no intermediate buffering.
-      // Idle timeout applies between chunks, not as a whole-stream timeout.
-      for await (const chunk of asyncIteratorWithIdleTimeout(
-        streamIterable,
-        config.timeout.generateTimeoutMs,
-      )) {
-        switch (chunk.type) {
-          case 'text':
-            accumulatedText += chunk.delta;
-            yield chunk;
-            break;
-
-          case 'tool_call':
-            pendingToolCalls.push(chunk.toolCall);
-            yield chunk;
-            break;
-
-          case 'done':
-            // Accumulate usage but do NOT yield — the provider's 'done' is an internal
-            // "generation round ended" signal. The pipeline yields its own 'done' chunk
-            // after finalizePipeline completes.
-            if (chunk.usage) {
-              accumulatedUsage.prompt = chunk.usage.prompt;
-              accumulatedUsage.completion = chunk.usage.completion;
-              accumulatedUsage.total = chunk.usage.total;
-            }
-            break;
-
-          case 'error':
-            yield chunk;
-            break;
-
-          default:
-            yield chunk;
-        }
-      }
-
-      // After done or error: construct PromptResponse for hooks
-      response = {
-        text: accumulatedText,
-        toolCalls: pendingToolCalls,
-        usage: accumulatedUsage,
-        finishReason: pendingToolCalls.length > 0 ? 'tool_calls' : 'stop',
-      };
-
-      const finishReason = response.finishReason;
-
-      eventBus.emit({
-        type: 'generate.completed',
-        runId,
-        durationMs: trackDuration(),
-        finishReason,
-      });
-
-      tempMessages[1] = {
-        role: 'assistant',
-        content: accumulatedText,
-        ...(pendingToolCalls.length > 0 ? { toolCalls: pendingToolCalls } : null),
-      };
-
-      // Tool execution
-      if (finishReason === 'tool_calls' && pendingToolCalls.length > 0) {
         roundCounter++;
-        if (roundCounter >= config.toolPolicy.maxToolRounds) {
-          const err = new MaxToolRoundsExceededError(roundCounter, config.toolPolicy.maxToolRounds);
-          yield { type: 'error', error: err };
-          try {
-            stateMachine.transition('FAILED');
-          } catch {
-            // Already in terminal state
-          }
-
-          eventBus.emit({
-            type: 'run.failed',
-            runId,
-            error: err,
-          });
-
-          logger.error('Run failed', {
-            runId,
-            error: err.message,
-            code: err.code,
-          });
-          return;
-        }
-
-        stateMachine.transition('TOOL_EXECUTING');
-        logger.debug('State transition: TOOL_EXECUTING', { runId, round: roundCounter });
-
-        // B-LOW-02 fix: add try/catch around tool execution in streaming path
-        try {
-          const toolResults = await executeToolRound(
-            roundCounter,
-            pendingToolCalls,
-            config,
-            hooks,
-            eventBus,
-            logger,
-            runId,
-            trackDuration,
-            messages,
-            allToolResults,
-            input,
-          );
-
-          // Yield tool_result chunks to consumer
-          for (const result of toolResults) {
-            yield { type: 'tool_result', toolResult: result };
-          }
-        } catch (error: unknown) {
-          const err =
-            error instanceof OrchestratorErrorClass
-              ? error
-              : new ToolExecutionError('unknown', error);
-
-          // ToolValidationError, ToolNotFoundError -> yield error and return (fail-fast)
-          if (err instanceof ToolValidationError || err instanceof ToolNotFoundError) {
-            yield { type: 'error', error: err };
-            try {
-              stateMachine.transition('FAILED');
-            } catch {
-              // Already in terminal state
-            }
-            eventBus.emit({ type: 'run.failed', runId, error: err });
-            logger.error('Run failed', { runId, error: err.message, code: err.code });
-            return;
-          }
-
-          // ToolExecutionError -> emit failed event and retry
-          const toolCallName = err instanceof ToolExecutionError ? err.toolName : 'unknown';
-
-          eventBus.emit({
-            type: 'tool.failed',
-            runId,
-            toolName: toolCallName,
-            error: toEventErrorPayload(err),
-          });
-
-          // Backoff before retry — use independent streamToolAttempt counter
-          const delayMs = calculateDelay(streamToolAttempt, config.retry, err);
-          streamToolAttempt++;
-          await sleep(delayMs);
-
-          // Reset streaming state for retry
-          pendingToolCalls = [];
-          accumulatedText = '';
-          continue;
-        }
-
-        pendingToolCalls = [];
-        accumulatedText = '';
         continue;
       }
 
+      if (result.action === 'error') {
+        for (const chunk of result.chunksToYield) {
+          yield chunk;
+        }
+        yield { type: 'error', error: result.error };
+        try {
+          stateMachine.transition('FAILED');
+        } catch {
+          // Already in terminal state
+        }
+        eventBus.emit({ type: 'run.failed', runId, error: result.error });
+        logger.error('Run failed', { runId, error: result.error.message, code: result.error.code });
+        return;
+      }
+
+      // break
+      for (const chunk of result.finalChunks) {
+        yield chunk;
+      }
+      response = result.response;
       break;
     }
 
@@ -1064,94 +1389,36 @@ async function* executeStreamingPipeline(
 }
 
 /**
- * Resolve profiles and emit profile.resolved event with details on active profile and overrides.
+ * Execute the orchestration pipeline.
  *
- * @param runId - canonical runId for the execution (same across retries/fallbacks)
- * @param input - original RunInput which may contain profile reference
- * @param config - ResolvedConfig after profile merging, used to calculate overrides and hook count
- * @param eventBus - Event bus to emit profile.resolved event
- * @remarks
- * This function is called at the start of both run() and stream() pipelines to ensure that profile resolution is handled consistently and the profile.resolved event is emitted with the canonical runId before any retries or fallbacks occur.
- * The profile.resolved event includes details on which profile is active, what configuration keys it overrides, and how many hooks are registered after merging, providing valuable context for observability and debugging.
+ * @param input - Run input parameters
+ * @param config - Resolved configuration (after profile merge)
+ * @param eventBus - Event bus for emitting events
+ * @param logger - Logger instance
+ * @returns RunOutput or AsyncIterable<StreamChunk>
  */
-function resolveProfiles(
-  runId: string,
+export async function executePipeline(
   input: RunInput,
   config: ResolvedConfig,
   eventBus: EventBus,
-) {
-  // Emit profile.resolved event with canonical runId
-  if (input.profile) {
-    const profiles = config.originalConfig?.profiles;
-    const profileName = input.profile;
-    const originalProfile = profiles?.[profileName];
-    if (profiles && originalProfile) {
-      // Calculate overrides based on what was set in the profile
-      const overrides = {
-        provider: originalProfile.provider !== undefined,
-        tools: originalProfile.tools !== undefined,
-        contextProviders: originalProfile.contextProviders !== undefined,
-        systemPrompt: originalProfile.systemPrompt !== undefined,
-        retry: originalProfile.retry !== undefined,
-        toolPolicy: originalProfile.toolPolicy !== undefined,
-      };
+  logger: Logger,
+): Promise<RunOutput | AsyncIterable<StreamChunk>> {
+  // Route to streaming pipeline if stream === true
+  if (input.stream === true) {
+    return executeStreamingPipeline(input, config, eventBus, logger);
+  }
 
-      // Calculate total hook count
-      // config.hooks is already merged (base + profile) by resolveConfig()
-      const mergedHooks = normalizeHookRegistry(config.hooks);
-      const hookCount =
-        mergedHooks.beforeRun.length +
-        mergedHooks.afterRun.length +
-        mergedHooks.beforeGenerate.length +
-        mergedHooks.afterGenerate.length +
-        mergedHooks.beforeTool.length +
-        mergedHooks.afterTool.length;
-
-      eventBus.emit({
-        type: 'profile.resolved',
-        runId,
-        profileName: input.profile,
-        overrides,
-        hookCount,
-      });
+  // Non-streaming path - delegate to executeNonStreamingPipeline with top-level timeout
+  try {
+    return await withTimeout(
+      executeNonStreamingPipeline(input, config, eventBus, logger),
+      config.timeout.totalTimeoutMs,
+    );
+  } catch (error) {
+    // Handle timeout from the race - rethrow TimeoutExceededError
+    if (error instanceof TimeoutExceededError) {
+      throw error;
     }
+    throw error;
   }
-}
-
-/**
- * Handle errors thrown during pipeline execution and convert to appropriate OrchestratorError subtypes if needed.
- *
- * @param error - the original error thrown
- * @param config - the resolved configuration, used to determine timeout values for wrapping unknown errors
- * @param timeoutMs - optional specific timeout value to use when wrapping unknown errors (e.g. generateTimeoutMs for generation step), falls back to totalTimeoutMs if not provided
- * @returns - an OrchestratorError instance that can be emitted and logged consistently
- * @remarks
- * This function ensures that all errors emitted by the pipeline are instances of OrchestratorError (or its subtypes) for consistent handling downstream.
- * It preserves the original error message and code when possible, and wraps unknown errors in a generic TimeoutExceededError to avoid losing error information.
- * This is important for observability and debugging, as it ensures that all errors have a consistent structure and can be properly categorized in events and logs.
- */
-function handleOrchestratorError(
-  error: unknown,
-  config: ResolvedConfig,
-  timeoutMs?: number,
-): OrchestratorError {
-  // ── FAILED path ────────────────────────────────────────
-  // Always properly propagate errors:
-  // 1. OrchestratorError subtypes -> pass through
-  // 2. Hook errors (beforeGenerate, afterGenerate, beforeTool, afterTool, beforeRun, afterRun) -> pass through
-  // 3. Any other Error -> pass through (don't convert to timeout)
-  // 4. Unknown errors -> wrap as generic OrchestratorError
-  let err: OrchestratorErrorClass;
-  if (error instanceof OrchestratorErrorClass) {
-    err = error;
-  } else if (error instanceof Error) {
-    // Wrap non-OrchestratorError instances to satisfy the StreamChunk error contract.
-    // PipelineInternalError is used (not HookExecutionError) because this catch
-    // block handles errors from the entire pipeline execution, not just hook code.
-    err = new PipelineInternalError(error.message, error);
-  } else {
-    // Unknown non-Error - wrap it
-    err = new TimeoutExceededError(timeoutMs ?? config.timeout.totalTimeoutMs);
-  }
-  return err;
 }
