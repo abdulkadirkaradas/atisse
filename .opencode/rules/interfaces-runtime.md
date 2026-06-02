@@ -239,7 +239,7 @@ export interface EventBus {
 ```typescript
 export type OrchestratorEvent =
   | { type: 'run.started'; runId: string; timestamp: number; profile?: string }
-  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage }
+  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage; timings?: StepTimings }  // BREAKING(v1): Added timings field
   | { type: 'run.failed'; runId: string; error: OrchestratorError }
   // OrchestratorError instance — consumer can instanceof check; imported via `import type`
   | { type: 'generate.started'; runId: string; messageCount: number }
