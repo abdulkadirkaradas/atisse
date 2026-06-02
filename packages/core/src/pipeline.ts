@@ -31,9 +31,10 @@ import { LifecycleStateMachine } from './lifecycle.js';
 import { type ComposeParams, PromptComposer } from './prompt-composer.js';
 import { ToolController } from './tool-controller.js';
 import { runHooks, normalizeHookRegistry } from './hooks.js';
-import { calculateDelay, sleep, executeWithRetry, withTimeout } from './policies.js';
+import { abortableSleep, calculateDelay, executeWithRetry, withTimeout } from './policies.js';
 import {
   isRetryable,
+  RunCancelledError,
   TimeoutExceededError,
   MaxToolRoundsExceededError,
   FallbackExhaustedError,
@@ -63,13 +64,23 @@ function toEventErrorPayload(error: OrchestratorError): EventErrorPayload {
  * Build a PromptRequest from messages and config.
  * Shared by both streaming and non-streaming paths.
  */
-function buildPromptRequest(messages: Message[], config: ResolvedConfig): PromptRequest {
+function buildPromptRequest(
+  messages: Message[],
+  config: ResolvedConfig,
+  signal?: AbortSignal,
+): PromptRequest {
+  const timeoutSignal =
+    config.timeout.generateTimeoutMs > 0
+      ? AbortSignal.timeout(config.timeout.generateTimeoutMs)
+      : undefined;
+
+  const composedSignal =
+    signal && timeoutSignal ? AbortSignal.any([signal, timeoutSignal]) : (signal ?? timeoutSignal);
+
   return {
     messages,
     ...(config.toolDefinitions ? { tools: config.toolDefinitions } : {}),
-    ...(config.timeout.generateTimeoutMs > 0
-      ? { signal: AbortSignal.timeout(config.timeout.generateTimeoutMs) }
-      : null),
+    ...(composedSignal ? { signal: composedSignal } : {}),
   };
 }
 
@@ -97,11 +108,13 @@ type StreamingGenerationRoundResult =
 async function* asyncIteratorWithIdleTimeout<T>(
   iterable: AsyncIterable<T>,
   timeoutMs: number,
+  signal?: AbortSignal,
   onTimeout?: () => void,
 ): AsyncGenerator<T, void, undefined> {
   const iterator = iterable[Symbol.asyncIterator]();
 
   while (true) {
+    await abortRunCall(signal ? { signal } : {});
     if (timeoutMs <= 0) {
       const result = await iterator.next();
       if (result.done) return;
@@ -219,6 +232,21 @@ function resolveProfiles(
         overrides,
         hookCount,
       });
+    }
+  }
+}
+
+async function abortRunCall(abort: { delayMs?: number; signal?: AbortSignal }): Promise<void> {
+  const { delayMs = 0, signal } = abort;
+
+  if (signal?.aborted) {
+    throw new RunCancelledError();
+  }
+
+  if (delayMs > 0) {
+    const aborted = await abortableSleep(delayMs, signal);
+    if (aborted || signal?.aborted) {
+      throw new RunCancelledError();
     }
   }
 }
@@ -518,6 +546,7 @@ async function finalizePipeline(
   timing?.mark('finalization_start');
 
   // Save to memory if sessionId present
+  await abortRunCall(input.signal ? { signal: input.signal } : {});
   if (input.sessionId && memoryAdapter) {
     try {
       await memoryAdapter.save(input.sessionId, [tempMessages[0], tempMessages[1]]);
@@ -584,6 +613,7 @@ async function handleProviderError(
   eventBus: EventBus,
   logger: Logger,
   runId: string,
+  signal?: AbortSignal,
 ): Promise<{ response: PromptResponse } | { action: 'continue'; toolAttempt: number }> {
   // Check for fallback
   if (err instanceof MaxRetriesExceededError && config.fallbackProvider) {
@@ -618,7 +648,7 @@ async function handleProviderError(
 
   // Retryable without fallback - continue loop
   const delayMs = calculateDelay(providerAttempt, config.retry, err);
-  await sleep(delayMs);
+  await abortRunCall({ delayMs, ...(signal ? { signal } : {}) });
   stateMachine.transition('GENERATING');
   // Note: toolAttempt is passed through unchanged in GenerationRoundResult
   return { action: 'continue', toolAttempt };
@@ -686,7 +716,8 @@ async function executeToolRoundWithErrorHandling(
     });
 
     const delayMs = calculateDelay(toolAttempt, config.retry, err);
-    await sleep(delayMs);
+    await abortRunCall({ delayMs, ...(input.signal ? { signal: input.signal } : {}) });
+
     return { action: 'continue', toolAttempt: toolAttempt + 1 };
   }
 
@@ -733,10 +764,12 @@ async function executeGenerationRound(
   });
 
   // Build PromptRequest using shared helper
-  const promptRequest = buildPromptRequest(messages, config);
+  const promptRequest = buildPromptRequest(messages, config, input.signal);
 
   let providerAttempt = 0;
   let response: PromptResponse;
+
+  await abortRunCall(input.signal ? { signal: input.signal } : {});
 
   // Try to generate with retry
   try {
@@ -764,6 +797,7 @@ async function executeGenerationRound(
           delayMs,
         });
       },
+      input.signal,
     );
   } catch (error: unknown) {
     const err = handleOrchestratorError(error, config, config.timeout.generateTimeoutMs);
@@ -777,6 +811,7 @@ async function executeGenerationRound(
       eventBus,
       logger,
       runId,
+      input.signal,
     );
     if ('action' in result) {
       return result; // { action: 'continue', toolAttempt }
@@ -1040,7 +1075,7 @@ async function executeStreamingGenerationRound(
     messageCount: messages.length,
   });
 
-  const promptRequest = buildPromptRequest(messages, config);
+  const promptRequest = buildPromptRequest(messages, config, input.signal);
 
   // D-M3-1: Full retry loop for streaming pre-stream errors
   let attempt = 0;
@@ -1089,7 +1124,7 @@ async function executeStreamingGenerationRound(
       const delayMs = calculateDelay(attempt, config.retry, err);
       logger.warn('Retrying', { runId, attempt, reason: err.code, delayMs });
       eventBus.emit({ type: 'retry.attempt', runId, attempt, reason: err.code, delayMs });
-      await sleep(delayMs);
+      await abortRunCall({ delayMs, ...(input.signal ? { signal: input.signal } : {}) });
       stateMachine.transition('GENERATING');
     }
   }
@@ -1101,6 +1136,7 @@ async function executeStreamingGenerationRound(
   for await (const chunk of asyncIteratorWithIdleTimeout(
     streamIterable,
     config.timeout.generateTimeoutMs,
+    input.signal,
   )) {
     switch (chunk.type) {
       case 'text':
@@ -1222,7 +1258,7 @@ async function executeStreamingGenerationRound(
 
       // Backoff before retry — use toolAttempt for exponential backoff
       const delayMs = calculateDelay(toolAttempt, config.retry, err);
-      await sleep(delayMs);
+      await abortRunCall({ delayMs, ...(input.signal ? { signal: input.signal } : {}) });
 
       // Reset streaming state for retry
       return {
@@ -1304,6 +1340,8 @@ async function* executeStreamingPipeline(
     timing.mark('tool_execution_start');
 
     while (true) {
+      await abortRunCall(input.signal ? { signal: input.signal } : {});
+
       const roundResult = await executeStreamingGenerationRound(
         roundCounter,
         toolAttempt,
