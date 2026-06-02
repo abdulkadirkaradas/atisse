@@ -189,6 +189,33 @@ export interface TokenUsage {
 }
 
 /**
+ * Per-step timing breakdown for a pipeline execution.
+ * All values are in milliseconds, measured as wall-clock time.
+ *
+ * Emitted as an optional field on `run.completed` — consumers that
+ * do not need timing data can ignore it.
+ *
+ * @breakingChange — v1 — Adding StepTimings modifies the
+ * `run.completed` event shape. The `timings` field is optional
+ * so existing consumers continue to work, but consumers performing
+ * exact shape matching may need updates.
+ */
+export interface StepTimings {
+  /** Time spent in context provider loading + memory load */
+  contextLoadingMs: number;
+  /** Time spent in PromptComposer.compose() */
+  compositionMs: number;
+  /** Total time spent in GENERATING across all rounds (includes retries) */
+  generationMs: number;
+  /** Total time spent in TOOL_EXECUTING across all rounds */
+  toolExecutionMs: number;
+  /** Time spent in COMPLETING (memory save + afterRun hooks) */
+  finalizationMs: number;
+  /** Total pipeline wall-clock time */
+  totalMs: number;
+}
+
+/**
  * Retry policy configuration.
  */
 export interface RetryPolicy {
@@ -391,7 +418,7 @@ export interface EventBus {
  */
 export type OrchestratorEvent =
   | { type: 'run.started'; runId: string; timestamp: number; profile?: string }
-  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage }
+  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage; timings?: StepTimings }
   | { type: 'run.failed'; runId: string; error: OrchestratorError }
   | { type: 'generate.started'; runId: string; messageCount: number }
   | { type: 'generate.completed'; runId: string; durationMs: number; finishReason: string }
