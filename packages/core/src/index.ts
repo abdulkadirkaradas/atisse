@@ -16,6 +16,7 @@ export type {
   ContextProvider,
   ContextProviderInput,
   TokenUsage,
+  StepTimings,
   RetryPolicy,
   TimeoutPolicy,
   ToolPolicy,
