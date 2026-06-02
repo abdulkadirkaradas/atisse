@@ -26,6 +26,7 @@ import type { ResolvedConfig } from './types.js';
 import type { OrchestratorError } from './errors.js';
 import type { EventErrorPayload } from './interfaces.js';
 import type { HookRegistry } from './interfaces.js';
+import { TimingCollector } from './timing-collector.js';
 import { LifecycleStateMachine } from './lifecycle.js';
 import { type ComposeParams, PromptComposer } from './prompt-composer.js';
 import { ToolController } from './tool-controller.js';
@@ -237,6 +238,7 @@ async function initializePipeline(
   config: ResolvedConfig,
   eventBus: EventBus,
   logger: Logger,
+  timing?: TimingCollector,
 ): Promise<{
   runId: string;
   startTime: number;
@@ -290,6 +292,10 @@ async function initializePipeline(
   stateMachine.transition('CONTEXT_INJECTING');
   logger.debug('State transition: CONTEXT_INJECTING', { runId });
 
+  // Timing: start pipeline and context loading
+  timing?.mark('start');
+  timing?.mark('context_start');
+
   const contextProviderInput: ContextProviderInput = {
     prompt: input.prompt,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
@@ -336,7 +342,13 @@ async function initializePipeline(
   stateMachine.transition('PROMPT_COMPOSED');
   logger.debug('State transition: PROMPT_COMPOSED', { runId });
 
+  // Timing: context loading complete (includes memory load)
+  timing?.mark('context_end');
+
   const promptComposer = new PromptComposer();
+
+  // Timing: composition starts
+  timing?.mark('composition_start');
 
   // Calculate memory token budget based on activeProvider's max context tokens.
   // Reserve tokens for: system prompt, context messages, current user prompt,
@@ -368,6 +380,9 @@ async function initializePipeline(
   }
 
   const messages = promptComposer.compose(composeParams);
+
+  // Timing: composition complete
+  timing?.mark('composition_end');
 
   return {
     runId,
@@ -493,10 +508,14 @@ async function finalizePipeline(
   activeProfile: string,
   memoryAdapter: ResolvedConfig['memoryAdapter'],
   responseText: string,
+  timing?: TimingCollector,
 ): Promise<RunOutput> {
   // ── Step 9 — COMPLETING ──────────────────────────────────
   stateMachine.transition('COMPLETING');
   logger.debug('State transition: COMPLETING', { runId });
+
+  // Timing: mark finalization start (before memory save)
+  timing?.mark('finalization_start');
 
   // Save to memory if sessionId present
   if (input.sessionId && memoryAdapter) {
@@ -533,6 +552,7 @@ async function finalizePipeline(
     runId,
     durationMs: Date.now() - startTime,
     usage: output.usage,
+    ...(timing !== undefined ? { timings: timing.snapshot() } : {}),
   });
 
   logger.info('Run completed', {
@@ -844,9 +864,14 @@ async function executeAllGenerationRounds(
   tempMessages: [Message, Message],
   allToolResults: ToolResult[],
   input: RunInput,
+  timing?: TimingCollector,
 ): Promise<ExecutionResponse> {
   let roundCounter = 0;
   let toolAttempt = 0;
+
+  // Timing: mark generation and tool execution start once before the round loop
+  timing?.mark('generation_start');
+  timing?.mark('tool_execution_start');
 
   while (true) {
     const result = await executeGenerationRound(
@@ -892,10 +917,11 @@ async function executeNonStreamingPipeline(
 ): Promise<RunOutput> {
   let runId = '';
   let stateMachine = new LifecycleStateMachine();
+  const timing = new TimingCollector();
 
   try {
     // ── Steps 1–4 — initializePipeline ──────────────────
-    const init = await initializePipeline(input, config, eventBus, logger);
+    const init = await initializePipeline(input, config, eventBus, logger, timing);
     runId = init.runId;
     stateMachine = init.stateMachine;
     const { startTime, trackDuration, hooks, activeProfile, tempMessages } = init;
@@ -916,6 +942,7 @@ async function executeNonStreamingPipeline(
       tempMessages,
       allToolResults,
       input,
+      timing,
     );
 
     // Run afterGenerate hooks (after tool loop completes, before finalization)
@@ -940,6 +967,7 @@ async function executeNonStreamingPipeline(
       activeProfile,
       config.memoryAdapter,
       response.text,
+      timing,
     );
   } catch (error: unknown) {
     const err: OrchestratorErrorClass = handleOrchestratorError(error, config);
@@ -1254,8 +1282,10 @@ async function* executeStreamingPipeline(
   let response: PromptResponse;
 
   try {
+    const timing = new TimingCollector();
+
     // ── Steps 1–4 — initializePipeline ──────────────────
-    const init = await initializePipeline(input, config, eventBus, logger);
+    const init = await initializePipeline(input, config, eventBus, logger, timing);
     runId = init.runId;
     stateMachine = init.stateMachine;
     const {
@@ -1269,6 +1299,10 @@ async function* executeStreamingPipeline(
     } = init;
 
     // ── Step 5 — GENERATING (Streaming) ─────────────────────
+    // Timing: mark generation and tool execution start once before the round loop
+    timing.mark('generation_start');
+    timing.mark('tool_execution_start');
+
     while (true) {
       const roundResult = await executeStreamingGenerationRound(
         roundCounter,
@@ -1360,6 +1394,7 @@ async function* executeStreamingPipeline(
       activeProfile,
       config.memoryAdapter,
       accumulatedText,
+      timing,
     );
 
     yield { type: 'done', usage: output.usage };
