@@ -616,4 +616,71 @@ describe('policies', () => {
     });
   });
 
+  describe('sleep', () => {
+    it('resolves after the specified duration via setTimeout', async () => {
+      const spy = vi.fn();
+      sleep(100).then(spy);
+      expect(spy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('abortableSleep', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('returns false on normal completion without signal', async () => {
+      const promise = abortableSleep(100);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(promise).resolves.toBe(false);
+    });
+
+    it('returns false on normal completion with signal', async () => {
+      const controller = new AbortController();
+      const promise = abortableSleep(100, controller.signal);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(promise).resolves.toBe(false);
+    });
+
+    it('returns true when signal is already aborted before sleep', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const result = await abortableSleep(100, controller.signal);
+      expect(result).toBe(true);
+    });
+
+    it('returns true when signal aborts mid-sleep', async () => {
+      const controller = new AbortController();
+      const promise = abortableSleep(1000, controller.signal);
+      controller.abort();
+      await expect(promise).resolves.toBe(true);
+    });
+
+    it('calls removeEventListener on abort cleanup', async () => {
+      const removeEventListenerSpy = vi.spyOn(
+        AbortSignal.prototype,
+        'removeEventListener',
+      );
+      const controller = new AbortController();
+      const promise = abortableSleep(1000, controller.signal);
+      controller.abort();
+      await promise;
+      expect(removeEventListenerSpy).toHaveBeenCalled();
+    });
+
+    it('calls removeEventListener on normal completion cleanup', async () => {
+      const removeEventListenerSpy = vi.spyOn(
+        AbortSignal.prototype,
+        'removeEventListener',
+      );
+      const controller = new AbortController();
+      const promise = abortableSleep(100, controller.signal);
+      await vi.advanceTimersByTimeAsync(100);
+      await promise;
+      expect(removeEventListenerSpy).toHaveBeenCalled();
+    });
+  });
+
 });
