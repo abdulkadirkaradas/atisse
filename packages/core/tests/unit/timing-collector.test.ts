@@ -337,4 +337,36 @@ describe('TimingCollector', () => {
       expect(timings.toolExecutionMs).toBe(0);
     });
   });
+
+  describe('mark() runtime string bypass', () => {
+    it('does not throw on unknown step values', () => {
+      vi.setSystemTime(1000);
+      const collector = new TimingCollector();
+
+      collector.mark('start');
+      expect(() => collector.mark('nonexistent_step' as any)).not.toThrow();
+      vi.setSystemTime(2000);
+
+      const timings = collector.snapshot();
+
+      expect(timings.totalMs).toBeGreaterThan(0);
+    });
+  });
+
+  describe('large wall-clock duration', () => {
+    it('handles very large wall-clock durations without precision loss', () => {
+      vi.setSystemTime(0);
+      const collector = new TimingCollector();
+
+      collector.mark('start');
+      collector.mark('context_start');
+      vi.setSystemTime(8640000000000000);
+      collector.mark('context_end');
+
+      const timings = collector.snapshot();
+
+      expect(timings.totalMs).toBe(8640000000000000);
+      expect(timings.contextLoadingMs).toBe(8640000000000000);
+    });
+  });
 });
