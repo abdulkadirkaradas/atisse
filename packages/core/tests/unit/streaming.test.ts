@@ -891,4 +891,169 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
       expect(textAfterToolResult.length).toBeGreaterThan(0);
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Run-entry config validation in streaming (flags 7, 8, 9)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('Run-entry config validation', () => {
+    it('throws ConfigValidationError when stream: true combined with fallbackProvider at base config (flag 7)', async () => {
+      const backupProvider = new MockProvider('backup');
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        fallbackProvider: backupProvider,
+      }));
+
+      await expect(orchestrator.run({ prompt: 'test', stream: true })).rejects.toThrow(
+        ConfigValidationError,
+      );
+    });
+
+    it('throws ConfigValidationError when stream: true combined with profile-level fallbackProvider (flag 7)', async () => {
+      const backupProvider = new MockProvider('backup');
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        profiles: {
+          test: {
+            name: 'test',
+            fallbackProvider: backupProvider,
+            provider,
+          },
+        },
+      }));
+
+      await expect(
+        orchestrator.run({ prompt: 'test', stream: true, profile: 'test' }),
+      ).rejects.toThrow(ConfigValidationError);
+    });
+
+    it('throws ConfigValidationError when provider.capabilities.streaming is false (flag 8)', async () => {
+      const nonStreamingProvider = new MockProvider('non-streaming');
+      nonStreamingProvider.capabilities.streaming = false;
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider: nonStreamingProvider,
+      }));
+
+      await expect(orchestrator.run({ prompt: 'test', stream: true })).rejects.toThrow(
+        ConfigValidationError,
+      );
+    });
+
+    it('throws ConfigValidationError when provider has no generateStream method (flag 9)', async () => {
+      // Create a minimal provider that satisfies AIProvider but lacks generateStream
+      const noStreamProvider: import('../../src/interfaces.js').AIProvider = {
+        id: 'no-stream',
+        capabilities: {
+          streaming: true,
+          toolCalling: true,
+          vision: false,
+          maxContextTokens: 128_000,
+        },
+        generate: async () => ({
+          text: '',
+          toolCalls: [],
+          usage: { prompt: 0, completion: 0, total: 0 },
+          finishReason: 'stop' as const,
+        }),
+        // generateStream intentionally omitted
+      };
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider: noStreamProvider,
+      }));
+
+      await expect(orchestrator.run({ prompt: 'test', stream: true })).rejects.toThrow(
+        ConfigValidationError,
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // AbortSignal handling (flags 17, 18)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('AbortSignal handling in streaming', () => {
+    it('yields RunCancelledError when AbortSignal fires during stream chunk iteration (flag 17)', async () => {
+      const abortProvider = new MockProvider('abort-iteration');
+      // Use a stream that yields with microtask delays so the signal can be checked
+      abortProvider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Hello' },
+          { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } },
+        ],
+      });
+
+      const controller = new AbortController();
+      const orchestrator = new Orchestrator(buildConfig({
+        provider: abortProvider,
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+        signal: controller.signal,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+        // Abort after first chunk to trigger RunCancelledError on next iteration
+        if (chunk.type === 'text') {
+          controller.abort();
+        }
+      }
+
+      // When abort fires after the generation round, the pipeline's while(true) loop
+      // calls abortRunCall which throws RunCancelledError. This is caught by the
+      // outer catch in executeStreamingPipeline, yielding an error chunk.
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      const text = chunks
+        .filter((c): c is StreamChunk & { type: 'text' } => c.type === 'text')
+        .map((c) => c.delta)
+        .join('');
+
+      expect(text).toBe('Hello');
+      // The last chunk is the error from the abort (RunCancelledError wrapped)
+      expect(chunks[chunks.length - 1]!.type).toBe('error');
+      expect(errorChunks).toHaveLength(1);
+      expect((errorChunks[0] as StreamChunk & { type: 'error' }).error).toBeInstanceOf(
+        RunCancelledError,
+      );
+    });
+
+    it('yields RunCancelledError when AbortSignal fires during pre-stream retry delay (flag 18)', async () => {
+      provider.reset();
+      provider.failureOnCall(1, new ProviderRateLimitError('429', 100));
+      // No enqueueStream for success — the retry delay is where abort fires
+
+      const controller = new AbortController();
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        retry: { maxAttempts: 3, baseDelayMs: 50_000, jitter: false },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      // Start the run and trigger abort during the retry delay
+      const resultPromise = orchestrator.run({
+        prompt: 'test',
+        stream: true,
+        signal: controller.signal,
+      });
+
+      // Abort during the retry delay
+      controller.abort();
+
+      const result = (await resultPromise) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      const error = (errorChunks[0] as StreamChunk & { type: 'error' }).error;
+      expect(error).toBeInstanceOf(RunCancelledError);
+    });
+  });
 });
