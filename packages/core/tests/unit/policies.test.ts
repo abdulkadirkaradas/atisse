@@ -4,14 +4,23 @@ import {
   withTimeout,
   executeWithRetry,
   DEFAULT_RETRY,
+  DEFAULT_TIMEOUT,
+  DEFAULT_TOOL_POLICY,
+  mergeRetryPolicy,
+  mergeTimeoutPolicy,
+  mergeToolPolicy,
+  abortableSleep,
+  sleep,
 } from '../../src/policies.js';
 import {
   ProviderRateLimitError,
   ProviderTimeoutError,
   ProviderAuthError,
   MaxRetriesExceededError,
+  TimeoutExceededError,
+  RunCancelledError,
 } from '../../src/errors.js';
-import type { RetryPolicy } from '../../src/interfaces.js';
+import type { RetryPolicy, TimeoutPolicy, ToolPolicy } from '../../src/interfaces.js';
 
 describe('policies', () => {
   beforeEach(() => {
