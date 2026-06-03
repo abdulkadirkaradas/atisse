@@ -255,4 +255,43 @@ describe('TimingCollector', () => {
       expect(collector.snapshot().generationMs).toBe(500);
     });
   });
+
+  describe('incremental snapshot accuracy', () => {
+    it('second snapshot reflects newly recorded marks between calls', () => {
+      vi.setSystemTime(1000);
+      const collector = new TimingCollector();
+
+      collector.mark('start');
+      collector.mark('context_start');
+
+      const first = collector.snapshot();
+      expect(first.contextLoadingMs).toBe(0);
+
+      vi.setSystemTime(2000);
+      collector.mark('context_end');
+
+      const second = collector.snapshot();
+      expect(second.contextLoadingMs).toBe(1000);
+      expect(first.contextLoadingMs).toBe(0);
+    });
+  });
+
+  describe('early pipeline failure', () => {
+    it('returns totalMs > 0 with zero for all other fields when only start is marked', () => {
+      vi.setSystemTime(1000);
+      const collector = new TimingCollector();
+
+      collector.mark('start');
+      vi.setSystemTime(5000);
+
+      const timings = collector.snapshot();
+
+      expect(timings.totalMs).toBe(4000);
+      expect(timings.contextLoadingMs).toBe(0);
+      expect(timings.compositionMs).toBe(0);
+      expect(timings.generationMs).toBe(0);
+      expect(timings.toolExecutionMs).toBe(0);
+      expect(timings.finalizationMs).toBe(0);
+    });
+  });
 });
