@@ -151,20 +151,6 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         ],
       });
 
-      const echoTool = {
-        name: 'echo',
-        description: 'Echo',
-        inputSchema: {
-          type: 'object',
-          properties: { value: { type: 'string' } },
-          required: ['value'],
-          additionalProperties: false,
-        },
-        async execute(input: unknown) {
-          return input;
-        },
-      };
-
       // Track afterGenerate hook calls
       const afterGenerateCalls: Array<PromptResponse> = [];
       const afterGenerateHook = vi.fn(async (ctx: AfterGenerateContext) => {
@@ -271,20 +257,6 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
           { type: 'done', usage: { prompt: 20, completion: 10, total: 30 } },
         ],
       });
-
-      const echoTool = {
-        name: 'echo',
-        description: 'Echo',
-        inputSchema: {
-          type: 'object',
-          properties: { value: { type: 'string' } },
-          required: ['value'],
-          additionalProperties: false,
-        },
-        async execute(input: unknown) {
-          return input;
-        },
-      };
 
       const orchestrator = new Orchestrator(buildConfig({
         provider,
