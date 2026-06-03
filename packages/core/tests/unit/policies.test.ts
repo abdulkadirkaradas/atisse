@@ -293,6 +293,184 @@ describe('policies', () => {
 
       await expect(executeWithRetry(fn, DEFAULT_RETRY)).rejects.toThrow(Error);
     });
+
+    it('succeeds with maxAttempts=1 (single attempt, no retries)', async () => {
+      const fn = vi.fn().mockResolvedValue('single');
+      const result = await executeWithRetry(fn, {
+        maxAttempts: 1,
+        baseDelayMs: 100,
+        maxDelayMs: 30_000,
+        jitter: false,
+      });
+      expect(result).toBe('single');
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws MaxRetriesExceededError when maxAttempts=1 and fn throws', async () => {
+      const fn = vi.fn().mockRejectedValue(new ProviderTimeoutError('timeout'));
+
+      await expect(
+        executeWithRetry(
+          fn,
+          { maxAttempts: 1, baseDelayMs: 100, maxDelayMs: 30_000, jitter: false },
+        ),
+      ).rejects.toThrow(MaxRetriesExceededError);
+
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries 3+ times and succeeds on the 4th attempt', async () => {
+      let callCount = 0;
+      const fn = vi.fn(async () => {
+        callCount++;
+        if (callCount < 4) {
+          throw new ProviderTimeoutError('timeout');
+        }
+        return 'success';
+      });
+
+      const promise = executeWithRetry(
+        fn,
+        { maxAttempts: 4, baseDelayMs: 10, maxDelayMs: 30_000, jitter: false },
+      );
+
+      // Total delay: 20 + 40 + 80 = 140ms
+      await vi.advanceTimersByTimeAsync(200);
+
+      await expect(promise).resolves.toBe('success');
+      expect(fn).toHaveBeenCalledTimes(4);
+    });
+
+    it('calls onRetry for each retry attempt in multi-round scenario', async () => {
+      const onRetry = vi.fn();
+      let callCount = 0;
+      const fn = vi.fn(async () => {
+        callCount++;
+        if (callCount < 4) {
+          throw new ProviderTimeoutError('timeout');
+        }
+        return 'success';
+      });
+
+      const promise = executeWithRetry(
+        fn,
+        { maxAttempts: 4, baseDelayMs: 10, maxDelayMs: 30_000, jitter: false },
+        onRetry,
+      );
+
+      await vi.advanceTimersByTimeAsync(200);
+
+      await expect(promise).resolves.toBe('success');
+      expect(onRetry).toHaveBeenCalledTimes(3);
+      expect(onRetry).toHaveBeenNthCalledWith(1, 1, expect.any(ProviderTimeoutError));
+      expect(onRetry).toHaveBeenNthCalledWith(2, 2, expect.any(ProviderTimeoutError));
+      expect(onRetry).toHaveBeenNthCalledWith(3, 3, expect.any(ProviderTimeoutError));
+    });
+
+    it('uses retryAfterMs from ProviderRateLimitError in retry delay', async () => {
+      const fn = vi.fn()
+        .mockRejectedValueOnce(new ProviderRateLimitError('rate limited', 5000))
+        .mockResolvedValueOnce('success');
+
+      const promise = executeWithRetry(
+        fn,
+        { maxAttempts: 2, baseDelayMs: 100, maxDelayMs: 30_000, jitter: false },
+      );
+
+      // Let the first fn() rejection and sleep begin
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Advancing only the base delay (100ms) should NOT trigger retry
+      // because retryAfterMs=5000 overrides the exponential calculation
+      await vi.advanceTimersByTimeAsync(100);
+      expect(fn).toHaveBeenCalledTimes(1); // Still only the first call
+
+      // Now advance the remaining retryAfterMs delay
+      await vi.advanceTimersByTimeAsync(4900);
+
+      await expect(promise).resolves.toBe('success');
+      expect(fn).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws RunCancelledError when signal is already aborted before retry delay', async () => {
+      const controller = new AbortController();
+      const fn = vi.fn().mockRejectedValue(new ProviderTimeoutError('timeout'));
+
+      const promise = executeWithRetry(
+        fn,
+        { maxAttempts: 2, baseDelayMs: 500, maxDelayMs: 30_000, jitter: false },
+        undefined,
+        controller.signal,
+      );
+
+      // Attach rejection handler eagerly to prevent unhandled rejection
+      const rejection = expect(promise).rejects.toThrow(RunCancelledError);
+
+      // Abort before abortableSleep starts (microtask ordering)
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+
+      await rejection;
+    });
+
+    it('throws RunCancelledError when signal aborts mid-delay during executeWithRetry', async () => {
+      const controller = new AbortController();
+      const fn = vi.fn().mockRejectedValue(new ProviderTimeoutError('timeout'));
+
+      const promise = executeWithRetry(
+        fn,
+        { maxAttempts: 3, baseDelayMs: 5000, maxDelayMs: 30_000, jitter: false },
+        undefined,
+        controller.signal,
+      );
+
+      // Attach rejection handler eagerly to prevent unhandled rejection
+      const rejection = expect(promise).rejects.toThrow(RunCancelledError);
+
+      // Let the fn() reject and abortableSleep begin (process microtasks)
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Abort mid-sleep — abortableSleep's 'abort' listener fires, resolves with true
+      controller.abort();
+
+      // Process the resolve(true) microtask from abortableSleep
+      await vi.advanceTimersByTimeAsync(0);
+
+      await rejection;
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws MaxRetriesExceededError with attempts=0 when maxAttempts is 0', async () => {
+      const fn = vi.fn().mockResolvedValue('should not be called');
+
+      await expect(
+        executeWithRetry(
+          fn,
+          { maxAttempts: 0, baseDelayMs: 100, maxDelayMs: 30_000, jitter: false },
+        ),
+      ).rejects.toThrow(MaxRetriesExceededError);
+
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('rethrows non-Error string thrown values', async () => {
+      await expect(
+        executeWithRetry(vi.fn().mockRejectedValue('string error'), DEFAULT_RETRY),
+      ).rejects.toBe('string error');
+    });
+
+    it('rethrows null thrown values', async () => {
+      await expect(
+        executeWithRetry(vi.fn().mockRejectedValue(null), DEFAULT_RETRY),
+      ).rejects.toBeNull();
+    });
+
+    it('rethrows object thrown values', async () => {
+      const objError = { message: 'object error' };
+      await expect(
+        executeWithRetry(vi.fn().mockRejectedValue(objError), DEFAULT_RETRY),
+      ).rejects.toBe(objError);
+    });
   });
 
 });
