@@ -1056,4 +1056,269 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
       expect(error).toBeInstanceOf(RunCancelledError);
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Hook execution in streaming (flags 30, 21, 10)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('Hook execution in streaming', () => {
+    it('beforeRun hooks execute before streaming starts (flag 30)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Hello' },
+          { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } },
+        ],
+      });
+
+      const beforeRunHook = vi.fn(async (ctx: { input: { prompt: string }; runId: string }) => {
+        expect(ctx.runId).toBeDefined();
+        expect(ctx.input.prompt).toBe('test');
+        return ctx;
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        hooks: { beforeRun: [beforeRunHook] },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      expect(beforeRunHook).toHaveBeenCalledTimes(1);
+      const text = chunks
+        .filter((c): c is StreamChunk & { type: 'text' } => c.type === 'text')
+        .map((c) => c.delta)
+        .join('');
+      expect(text).toBe('Hello');
+    });
+
+    it('beforeGenerate hook fires before streaming generation (flag 21)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Modified response' },
+          { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } },
+        ],
+      });
+
+      const beforeGenerateHook = vi.fn(async (ctx: BeforeGenerateContext) => {
+        expect(ctx.messages.length).toBeGreaterThan(0);
+        expect(ctx.runId).toBeDefined();
+        return ctx;
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        hooks: { beforeGenerate: [beforeGenerateHook] },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      expect(beforeGenerateHook).toHaveBeenCalledTimes(1);
+    });
+
+    it('afterGenerate hook throw yields error chunk in streaming (flag 10)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Text before hook throw' },
+          { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } },
+        ],
+      });
+
+      const afterGenerateHook = vi.fn(async () => {
+        throw new Error('afterGenerate hook failed');
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        hooks: { afterGenerate: [afterGenerateHook] },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      // Text chunks should be yielded before the hook error
+      const textChunks = chunks.filter((c) => c.type === 'text');
+      expect(textChunks.length).toBeGreaterThan(0);
+
+      // Error chunk should be yielded (wrapped as PipelineInternalError)
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      expect((errorChunks[0] as StreamChunk & { type: 'error' }).error).toBeInstanceOf(
+        PipelineInternalError,
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Events in streaming (flags 19, 20)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('Events in streaming', () => {
+    it('run.started event is emitted with correct runId and timestamp (flag 19)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Hello' },
+          { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const startedEvents: OrchestratorEvent[] = [];
+      orchestrator.on('run.started', (event) => {
+        startedEvents.push(event);
+      });
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      // Consume the stream to ensure events fire
+      for await (const _chunk of result) {
+        // consume
+      }
+
+      expect(startedEvents).toHaveLength(1);
+      const event = startedEvents[0] as Extract<OrchestratorEvent, { type: 'run.started' }>;
+      expect(event.runId).toBeDefined();
+      expect(typeof event.runId).toBe('string');
+      expect(event.timestamp).toBeGreaterThan(0);
+    });
+
+    it('generate.started and generate.completed events fire at correct lifecycle points (flag 20)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Hello' },
+          { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const generateStartedEvents: Array<Extract<OrchestratorEvent, { type: 'generate.started' }>> =
+        [];
+      const generateCompletedEvents: Array<
+        Extract<OrchestratorEvent, { type: 'generate.completed' }>
+      > = [];
+
+      orchestrator.on('generate.started', (event) => {
+        generateStartedEvents.push(event);
+      });
+      orchestrator.on('generate.completed', (event) => {
+        generateCompletedEvents.push(event);
+      });
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      for await (const _chunk of result) {
+        // consume
+      }
+
+      expect(generateStartedEvents).toHaveLength(1);
+      expect(generateCompletedEvents).toHaveLength(1);
+
+      const started = generateStartedEvents[0]!;
+      expect(started.runId).toBeDefined();
+      expect(started.messageCount).toBeGreaterThan(0);
+
+      const completed = generateCompletedEvents[0]!;
+      expect(completed.runId).toBeDefined();
+      expect(completed.finishReason).toBe('stop');
+      expect(completed.durationMs).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Profile events (flag 31)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('Profile events in streaming', () => {
+    it('emits profile.resolved event with correct overrides and hookCount (flag 31)', async () => {
+      provider.reset();
+
+      const profileProvider = new MockProvider('profile-provider');
+      profileProvider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Profile test' },
+          { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        profiles: {
+          myProfile: {
+            name: 'myProfile',
+            provider: profileProvider,
+            systemPrompt: 'Custom system prompt',
+          },
+        },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const resolvedEvents: Array<Extract<OrchestratorEvent, { type: 'profile.resolved' }>> = [];
+      orchestrator.on('profile.resolved', (event) => {
+        resolvedEvents.push(event);
+      });
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+        profile: 'myProfile',
+      })) as AsyncIterable<StreamChunk>;
+
+      for await (const _chunk of result) {
+        // consume
+      }
+
+      expect(resolvedEvents).toHaveLength(1);
+      const event = resolvedEvents[0]!;
+      expect(event.profileName).toBe('myProfile');
+      expect(event.overrides.provider).toBe(true);
+      expect(event.overrides.systemPrompt).toBe(true);
+      expect(event.overrides.tools).toBe(false);
+      expect(event.overrides.contextProviders).toBe(false);
+      expect(event.overrides.retry).toBe(false);
+      expect(event.overrides.toolPolicy).toBe(false);
+      expect(event.hookCount).toBe(0);
+      expect(event.runId).toBeDefined();
+    });
+  });
 });
