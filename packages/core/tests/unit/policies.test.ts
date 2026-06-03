@@ -473,4 +473,24 @@ describe('policies', () => {
     });
   });
 
+  describe('DEFAULT_TIMEOUT', () => {
+    it('has expected default timeout values', () => {
+      expect(DEFAULT_TIMEOUT).toEqual({
+        generateTimeoutMs: 30_000,
+        toolTimeoutMs: 10_000,
+        totalTimeoutMs: 60_000,
+      });
+    });
+  });
+
+  describe('DEFAULT_TOOL_POLICY', () => {
+    it('has expected default tool policy values', () => {
+      expect(DEFAULT_TOOL_POLICY).toEqual({
+        maxToolRounds: 5,
+        allowParallelTools: false,
+        toolTimeoutMs: 10_000,
+      });
+    });
+  });
+
 });
