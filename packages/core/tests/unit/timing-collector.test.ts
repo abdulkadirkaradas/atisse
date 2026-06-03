@@ -294,4 +294,47 @@ describe('TimingCollector', () => {
       expect(timings.finalizationMs).toBe(0);
     });
   });
+
+  describe('zero-duration boundary', () => {
+    it('returns zero for all fields when all marks share the same timestamp', () => {
+      vi.setSystemTime(1000);
+      const collector = new TimingCollector();
+
+      collector.mark('start');
+      collector.mark('context_start');
+      collector.mark('context_end');
+      collector.mark('composition_start');
+      collector.mark('composition_end');
+      collector.mark('generation_start');
+      collector.mark('tool_execution_start');
+      collector.mark('finalization_start');
+
+      const timings = collector.snapshot();
+
+      expect(timings.contextLoadingMs).toBe(0);
+      expect(timings.compositionMs).toBe(0);
+      expect(timings.generationMs).toBe(0);
+      expect(timings.toolExecutionMs).toBe(0);
+      expect(timings.finalizationMs).toBe(0);
+      expect(timings.totalMs).toBe(0);
+    });
+  });
+
+  describe('partial elapsed marks', () => {
+    it('returns zero for toolExecutionMs when tool_execution_start is not marked', () => {
+      vi.setSystemTime(1000);
+      const collector = new TimingCollector();
+
+      collector.mark('start');
+      collector.mark('generation_start');
+      collector.mark('finalization_start');
+      vi.setSystemTime(2000);
+
+      const timings = collector.snapshot();
+
+      expect(timings.generationMs).toBe(1000);
+      expect(timings.finalizationMs).toBe(1000);
+      expect(timings.toolExecutionMs).toBe(0);
+    });
+  });
 });
