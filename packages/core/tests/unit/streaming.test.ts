@@ -1,12 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type {
   AfterGenerateContext,
+  BeforeGenerateContext,
+  OrchestratorEvent,
   PromptResponse,
   StreamChunk,
+  TokenUsage,
 } from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
-import { ProviderUnavailableError } from '../../src/errors.js';
+import {
+  ConfigValidationError,
+  MaxRetriesExceededError,
+  MaxToolRoundsExceededError,
+  MemorySaveError,
+  PipelineInternalError,
+  ProviderAuthError,
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+  RunCancelledError,
+  TimeoutExceededError,
+  ToolNotFoundError,
+  ToolValidationError,
+} from '../../src/errors.js';
+import { buildConfig } from '../fixtures/builders.js';
+import { echoTool, failingTool, validationFailTool } from '../fixtures/mock-tools.js';
 
 describe('Unit: Streaming Termination & Edge Cases', () => {
   let provider: MockProvider;
