@@ -47,10 +47,10 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         ],
       });
 
-      const orchestrator = new Orchestrator({
+      const orchestrator = new Orchestrator(buildConfig({
         provider,
         timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
-      });
+      }));
 
       const result = (await orchestrator.run({
         prompt: 'test',
@@ -83,10 +83,10 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         ],
       });
 
-      const orchestrator = new Orchestrator({
+      const orchestrator = new Orchestrator(buildConfig({
         provider,
         timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
-      });
+      }));
 
       const result = (await orchestrator.run({
         prompt: 'test',
@@ -110,10 +110,10 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         chunks: [{ type: 'done', usage: { prompt: 0, completion: 0, total: 0 } }],
       });
 
-      const orchestrator = new Orchestrator({
+      const orchestrator = new Orchestrator(buildConfig({
         provider,
         timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
-      });
+      }));
 
       const result = (await orchestrator.run({
         prompt: 'test',
@@ -177,12 +177,12 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         return ctx;
       });
 
-      const orchestrator = new Orchestrator({
+      const orchestrator = new Orchestrator(buildConfig({
         provider,
         tools: [echoTool],
         hooks: { afterGenerate: [afterGenerateHook] },
         timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
-      });
+      }));
 
       const result = (await orchestrator.run({
         prompt: 'test',
@@ -228,10 +228,10 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         ],
       });
 
-      const orchestrator = new Orchestrator({
+      const orchestrator = new Orchestrator(buildConfig({
         provider,
         timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
-      });
+      }));
 
       const result = (await orchestrator.run({
         prompt: 'test',
@@ -286,11 +286,11 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
         },
       };
 
-      const orchestrator = new Orchestrator({
+      const orchestrator = new Orchestrator(buildConfig({
         provider,
         tools: [echoTool],
         timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
-      });
+      }));
 
       const result = (await orchestrator.run({
         prompt: 'test',
