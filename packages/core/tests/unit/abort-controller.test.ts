@@ -4,6 +4,9 @@ import {
   isRetryable,
   ProviderTimeoutError,
   ProviderRateLimitError,
+  ProviderAuthError,
+  MemorySaveError,
+  ProviderUnavailableError,
 } from '../../src/errors.js';
 import {
   abortableSleep,
@@ -13,6 +16,8 @@ import {
 } from '../../src/policies.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
+import { MockMemoryAdapter } from '../fixtures/mock-memory.js';
+import { echoTool } from '../fixtures/mock-tools.js';
 import type { StreamChunk } from '../../src/interfaces.js';
 
 describe('RunCancelledError', () => {
@@ -102,7 +107,22 @@ describe('abortableSleep', () => {
     const result = await sleepPromise;
     expect(result).toBe(true);
   });
+
+  // GAP 14: listener cleanup
+  it('removes abort event listener after timer completes normally', async () => {
+    const controller = new AbortController();
+    const removeSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    const promise = abortableSleep(100, controller.signal);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+    removeSpy.mockRestore();
+  });
 });
+
+// ── executeWithRetry signal param ────────────────────────────────────────────
 
 describe('executeWithRetry signal param', () => {
   beforeEach(() => {
@@ -144,6 +164,98 @@ describe('executeWithRetry signal param', () => {
     controller.abort();
 
     await expect(retryPromise).rejects.toThrow(RunCancelledError);
+    vi.useFakeTimers();
+  });
+
+  // GAP 2: pre-aborted signal — fn() fails with retryable error, retry skipped
+  it('throws RunCancelledError when signal already aborted before executeWithRetry call with retryable error', async () => {
+    vi.useRealTimers();
+    const controller = new AbortController();
+    controller.abort(); // Pre-abort before executeWithRetry
+
+    const fn = vi.fn().mockRejectedValue(new ProviderTimeoutError('timeout'));
+
+    await expect(
+      executeWithRetry(
+        fn,
+        { ...DEFAULT_RETRY, maxAttempts: 2, baseDelayMs: 1000, jitter: false },
+        undefined,
+        controller.signal,
+      ),
+    ).rejects.toThrow(RunCancelledError);
+
+    // fn() was called once, retry was skipped due to pre-aborted signal
+    expect(fn).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+  });
+
+  // GAP 3: non-retryable error in retry loop → rethrow immediately
+  it('rethrows non-retryable error immediately without retrying', async () => {
+    vi.useRealTimers();
+    const fn = vi.fn().mockRejectedValue(new ProviderAuthError('auth failed'));
+
+    await expect(
+      executeWithRetry(fn, { ...DEFAULT_RETRY, maxAttempts: 3, baseDelayMs: 1000, jitter: false }),
+    ).rejects.toThrow(ProviderAuthError);
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+  });
+
+  // GAP 11: signal fires during fn() execution — cooperative cancellation
+  it('propagates RunCancelledError when fn() detects signal abort mid-execution', async () => {
+    const controller = new AbortController();
+
+    const fn = vi.fn(async () => {
+      // Cooperative cancellation: wait for signal abort
+      await new Promise<void>((_, reject) => {
+        if (controller.signal.aborted) {
+          reject(new RunCancelledError());
+          return;
+        }
+        controller.signal.addEventListener('abort', () => reject(new RunCancelledError()), {
+          once: true,
+        });
+      });
+      return 'success';
+    });
+
+    const promise = executeWithRetry(
+      fn,
+      { ...DEFAULT_RETRY, maxAttempts: 3, baseDelayMs: 1000, jitter: false },
+      undefined,
+      controller.signal,
+    );
+
+    controller.abort();
+
+    await expect(promise).rejects.toThrow(RunCancelledError);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  // GAP 12: onRetry callback is called with correct attempt and error
+  it('calls onRetry with attempt count and error on retry', async () => {
+    vi.useRealTimers();
+    const onRetry = vi.fn();
+    let callCount = 0;
+    const error = new ProviderTimeoutError('timeout');
+    const fn = vi.fn(async () => {
+      callCount++;
+      if (callCount < 2) {
+        throw error;
+      }
+      return 'success';
+    });
+
+    await executeWithRetry(
+      fn,
+      { ...DEFAULT_RETRY, maxAttempts: 2, baseDelayMs: 10, jitter: false },
+      onRetry,
+    );
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onRetry).toHaveBeenCalledWith(1, error); // first retry = attempt 1
+    expect(fn).toHaveBeenCalledTimes(2);
     vi.useFakeTimers();
   });
 });
@@ -219,15 +331,17 @@ describe('AbortSignal in RunInput - Integration', () => {
     vi.useRealTimers();
   });
 
+  /* ── Basic cases (existing) ── */
+
   it('throws RunCancelledError when signal already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
 
     const orchestrator = new Orchestrator({ provider });
 
-    await expect(
-      orchestrator.run({ prompt: 'test', signal: controller.signal }),
-    ).rejects.toThrow(RunCancelledError);
+    await expect(orchestrator.run({ prompt: 'test', signal: controller.signal })).rejects.toThrow(
+      RunCancelledError,
+    );
   });
 
   it('completes normally when signal is provided but never aborted', async () => {
@@ -239,6 +353,209 @@ describe('AbortSignal in RunInput - Integration', () => {
     const result = await orchestrator.run({ prompt: 'test', signal: controller.signal });
     expect(result.text).toBe('Hello, world!');
   });
+
+  it('propagates signal to PromptRequest.signal', async () => {
+    provider.enqueue({ text: 'response' });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({ provider });
+
+    await orchestrator.run({ prompt: 'test', signal: controller.signal });
+
+    const lastRequest = provider.lastRequest();
+    expect(lastRequest?.signal).toBeDefined();
+  });
+
+  /* ── GAP 4: Non-streaming mid-generation abort ── */
+
+  it('throws RunCancelledError when abort fires during non-streaming generation retry delay', async () => {
+    provider.enqueue({ error: new ProviderTimeoutError('timeout') });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({
+      provider,
+      retry: { maxAttempts: 3, baseDelayMs: 100_000, maxDelayMs: 100_000, jitter: false },
+    });
+
+    const promise = orchestrator.run({ prompt: 'test', signal: controller.signal });
+
+    // Provider fails with retryable error; abort fires during the retry delay
+    controller.abort();
+
+    await expect(promise).rejects.toThrow(RunCancelledError);
+  });
+
+  /* ── GAP 5: Abort during tool execution ── */
+
+  it('throws RunCancelledError when abort fires during tool execution round', async () => {
+    provider.enqueue({
+      text: '',
+      toolCalls: [{ id: 'call-1', name: 'echo', input: { value: 'test' } }],
+    });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({
+      provider,
+      tools: [echoTool],
+      retry: { maxAttempts: 1, baseDelayMs: 0, jitter: false },
+    });
+
+    const promise = orchestrator.run({ prompt: 'test', signal: controller.signal });
+
+    // Abort fires during tool execution; signal is not checked during tool round
+    // but is caught at the next generation round's abortRunCall check
+    controller.abort();
+
+    await expect(promise).rejects.toThrow(RunCancelledError);
+  });
+
+  /* ── GAP 6: Abort during memory save finalization ── */
+
+  it('throws RunCancelledError when abort fires before memory save and does not save memory', async () => {
+    const memory = new MockMemoryAdapter();
+    provider.enqueue({ text: 'response' });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({
+      provider,
+      memoryAdapter: memory,
+      retry: { maxAttempts: 1, baseDelayMs: 0, jitter: false },
+    });
+
+    const promise = orchestrator.run({
+      prompt: 'test',
+      sessionId: 'session-1',
+      signal: controller.signal,
+    });
+
+    // Abort fires during finalization phase, before memory save check
+    controller.abort();
+
+    await expect(promise).rejects.toThrow(RunCancelledError);
+
+    // Verify memory was NOT saved because abortRunCall threw before the save
+    const saved = await memory.load('session-1');
+    expect(saved).toHaveLength(0);
+  });
+
+  /* ── GAP 7: Fallback provider abort — no abortRunCall checkpoint ── */
+
+  it('propagates abort signal to fallback provider PromptRequest.signal', async () => {
+    const fallbackProvider = new MockProvider('fallback');
+    fallbackProvider.enqueue({ text: 'fallback response' });
+
+    provider.enqueue({ error: new ProviderTimeoutError('timeout') });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({
+      provider,
+      fallbackProvider,
+      retry: { maxAttempts: 1, baseDelayMs: 0, jitter: false }, // No retries → immediate fallback
+    });
+
+    // Primary fails with maxAttempts=1 → MaxRetriesExceededError
+    // Fallback triggered in handleProviderError — no abortRunCall checkpoint there
+    const result = await orchestrator.run({ prompt: 'test', signal: controller.signal });
+    expect(result.text).toBe('fallback response');
+
+    // The abort signal IS propagated to the fallback provider via PromptRequest
+    // even though there's no explicit abortRunCall check in handleProviderError
+    const fallbackRequest = fallbackProvider.lastRequest();
+    expect(fallbackRequest?.signal).toBeDefined();
+  });
+
+  it('throws RunCancelledError when abort fires during retry delay before fallback can be triggered', async () => {
+    const fallbackProvider = new MockProvider('fallback');
+    fallbackProvider.enqueue({ text: 'fallback response' });
+
+    provider.enqueue({ error: new ProviderTimeoutError('timeout') });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({
+      provider,
+      fallbackProvider,
+      retry: { maxAttempts: 2, baseDelayMs: 100_000, maxDelayMs: 100_000, jitter: false },
+    });
+
+    const promise = orchestrator.run({ prompt: 'test', signal: controller.signal });
+
+    // Provider fails with retryable error → executeWithRetry enters retry delay
+    // Abort fires during the delay → RunCancelledError thrown before fallback
+    controller.abort();
+
+    await expect(promise).rejects.toThrow(RunCancelledError);
+  });
+
+  /* ── GAP 8: buildPromptRequest composed signal (AbortSignal.any) ── */
+
+  it('passes composed signal (not raw user signal) when both signal and timeout are configured', async () => {
+    provider.enqueue({ text: 'response' });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 60_000, totalTimeoutMs: 120_000, toolTimeoutMs: 30_000 },
+    });
+
+    await orchestrator.run({ prompt: 'test', signal: controller.signal });
+
+    const lastRequest = provider.lastRequest();
+    expect(lastRequest?.signal).toBeDefined();
+    // The signal on the request should be the composed signal, not the raw user signal
+    expect(lastRequest?.signal).not.toBe(controller.signal);
+  });
+
+  /* ── GAP 9: MemorySaveError + abort priority ── */
+
+  it('throws MemorySaveError when memory save fails and signal is not aborted before check', async () => {
+    const memory = new MockMemoryAdapter();
+    memory.saveError = new ProviderUnavailableError('storage unavailable');
+    provider.enqueue({ text: 'response' });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({
+      provider,
+      memoryAdapter: memory,
+      retry: { maxAttempts: 1, baseDelayMs: 0, jitter: false },
+    });
+
+    // Signal is NOT aborted — abortRunCall passes, then memory save throws
+    await expect(
+      orchestrator.run({
+        prompt: 'test',
+        sessionId: 'session-1',
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow(MemorySaveError);
+  });
+
+  /* ── GAP 15: MockProvider.generateStream signal propagation ── */
+
+  it('propagates signal to PromptRequest.signal in streaming mode', async () => {
+    provider.enqueue({ text: 'streaming response' });
+
+    const controller = new AbortController();
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 60_000, totalTimeoutMs: 120_000 },
+    });
+
+    const stream = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+      signal: controller.signal,
+    })) as AsyncIterable<StreamChunk>;
+
+    // Consume the stream
+    for await (const _chunk of stream) {
+      /* drain */
+    }
+
+    const lastRequest = provider.lastRequest();
+    expect(lastRequest?.signal).toBeDefined();
+  });
+
+  /* ── Existing streaming tests ── */
 
   it('yields error chunk when signal aborted during streaming', async () => {
     provider.enqueueStream({
@@ -273,18 +590,6 @@ describe('AbortSignal in RunInput - Integration', () => {
     if (errorChunk?.type === 'error') {
       expect(errorChunk.error.code).toBe('RUN_CANCELLED');
     }
-  });
-
-  it('propagates signal to PromptRequest.signal', async () => {
-    provider.enqueue({ text: 'response' });
-
-    const controller = new AbortController();
-    const orchestrator = new Orchestrator({ provider });
-
-    await orchestrator.run({ prompt: 'test', signal: controller.signal });
-
-    const lastRequest = provider.lastRequest();
-    expect(lastRequest?.signal).toBeDefined();
   });
 
   it('abort during streaming retry delay yields error chunk', async () => {
