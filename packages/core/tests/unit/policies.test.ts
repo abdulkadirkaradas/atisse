@@ -101,6 +101,61 @@ describe('policies', () => {
       // 100_000 capped to 30_000
       expect(calculateDelay(0, policy, error)).toBe(30_000);
     });
+
+    it('returns jittered value that can exceed maxDelayMs', () => {
+      // Jitter is added AFTER the cap, so the final value can exceed maxDelayMs
+      vi.setSystemTime(0);
+      const policy: RetryPolicy = {
+        maxAttempts: 3,
+        baseDelayMs: 1000,
+        maxDelayMs: 800,
+        jitter: true,
+      };
+
+      // attempt 0: exponential = 1000, capped = 800, jitter = 800 + 0-240 = 800-1040
+      const delay = calculateDelay(0, policy);
+      expect(delay).toBeGreaterThanOrEqual(800);
+      expect(delay).toBeLessThanOrEqual(1040);
+    });
+
+    it('returns 0 for retryAfterMs=0 (immediate retry)', () => {
+      const policy: RetryPolicy = {
+        maxAttempts: 3,
+        baseDelayMs: 500,
+        maxDelayMs: 30_000,
+        jitter: false,
+      };
+      const error = new ProviderRateLimitError('rate limited', 0);
+
+      expect(calculateDelay(0, policy, error)).toBe(0);
+    });
+
+    it('falls through to exponential backoff when retryAfterMs is undefined', () => {
+      const policy: RetryPolicy = {
+        maxAttempts: 3,
+        baseDelayMs: 500,
+        maxDelayMs: 30_000,
+        jitter: false,
+      };
+      const error = new ProviderRateLimitError('rate limited');
+
+      // retryAfterMs is undefined, so exponential backoff is used
+      expect(calculateDelay(0, policy, error)).toBe(500);
+    });
+
+    it('handles negative attempt (fractional exponential)', () => {
+      const policy: RetryPolicy = {
+        maxAttempts: 3,
+        baseDelayMs: 1000,
+        maxDelayMs: 30_000,
+        jitter: false,
+      };
+
+      // attempt -1: 1000 * 2^(-1) = 500
+      expect(calculateDelay(-1, policy)).toBe(500);
+      // attempt -2: 1000 * 2^(-2) = 250
+      expect(calculateDelay(-2, policy)).toBe(250);
+    });
   });
 
   describe('withTimeout', () => {
@@ -126,6 +181,14 @@ describe('policies', () => {
     it('passes through when ms <= 0', async () => {
       const result = await withTimeout(Promise.resolve('no-timeout'), 0);
       expect(result).toBe('no-timeout');
+    });
+
+    it('passes through when ms is NaN (guard returns promise directly)', async () => {
+      // NaN <= 0 is false, so it proceeds to the timeout branch.
+      // setTimeout with NaN fires on the next tick, but the resolved
+      // wrapped promise wins the race.
+      const result = await withTimeout(Promise.resolve('ok'), NaN);
+      expect(result).toBe('ok');
     });
 
     describe('timer cleanup', () => {
