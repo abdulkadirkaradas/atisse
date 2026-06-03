@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { RunCancelledError, isRetryable } from '../../src/errors.js';
-import { abortableSleep, executeWithRetry, DEFAULT_RETRY } from '../../src/policies.js';
-import { ProviderTimeoutError } from '../../src/errors.js';
+import {
+  RunCancelledError,
+  isRetryable,
+  ProviderTimeoutError,
+  ProviderRateLimitError,
+} from '../../src/errors.js';
+import {
+  abortableSleep,
+  executeWithRetry,
+  calculateDelay,
+  DEFAULT_RETRY,
+} from '../../src/policies.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import type { StreamChunk } from '../../src/interfaces.js';
@@ -26,6 +35,32 @@ describe('RunCancelledError', () => {
     expect(error.name).toBe('RunCancelledError');
   });
 });
+
+// ── GAPS 1 & 10: isRetryable type coverage ──────────────────────────────────
+
+describe('isRetryable', () => {
+  it('returns true for ProviderTimeoutError', () => {
+    expect(isRetryable(new ProviderTimeoutError('timeout'))).toBe(true);
+  });
+
+  it('returns true for ProviderRateLimitError', () => {
+    expect(isRetryable(new ProviderRateLimitError('rate limited'))).toBe(true);
+  });
+
+  it('returns false for plain Error', () => {
+    expect(isRetryable(new Error('plain error'))).toBe(false);
+  });
+
+  it('returns false for null input', () => {
+    expect(isRetryable(null)).toBe(false);
+  });
+
+  it('returns false for undefined input', () => {
+    expect(isRetryable(undefined)).toBe(false);
+  });
+});
+
+// ── abortableSleep ──────────────────────────────────────────────────────────
 
 describe('abortableSleep', () => {
   beforeEach(() => {
@@ -112,6 +147,65 @@ describe('executeWithRetry signal param', () => {
     vi.useFakeTimers();
   });
 });
+
+// ── GAP 13: calculateDelay ──────────────────────────────────────────────────
+
+describe('calculateDelay', () => {
+  const basePolicy = {
+    maxAttempts: 5,
+    baseDelayMs: 1000,
+    maxDelayMs: 30_000,
+    jitter: false,
+  };
+
+  it('calculates exponential backoff (baseDelayMs * 2^attempt)', () => {
+    expect(calculateDelay(0, basePolicy)).toBe(1000); // 1000 * 2^0
+    expect(calculateDelay(1, basePolicy)).toBe(2000); // 1000 * 2^1
+    expect(calculateDelay(2, basePolicy)).toBe(4000); // 1000 * 2^2
+    expect(calculateDelay(3, basePolicy)).toBe(8000); // 1000 * 2^3
+  });
+
+  it('caps exponential value at maxDelayMs', () => {
+    const cappedPolicy = { ...basePolicy, maxDelayMs: 5000 };
+    // 1000 * 2^3 = 8000 → capped at 5000
+    expect(calculateDelay(3, cappedPolicy)).toBe(5000);
+    // 1000 * 2^10 = huge → capped at 5000
+    expect(calculateDelay(10, cappedPolicy)).toBe(5000);
+  });
+
+  it('applies partial jitter when jitter is true', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const jitterPolicy = { ...basePolicy, jitter: true };
+    // exponential = 2000, jitter = 2000 * 0.3 * 0.5 = 300, total = 2300
+    expect(calculateDelay(1, jitterPolicy)).toBe(2300);
+    vi.restoreAllMocks();
+  });
+
+  it('uses retryAfterMs from ProviderRateLimitError when present', () => {
+    const error = new ProviderRateLimitError('rate limited', 5000);
+    // retryAfterMs = 5000, capped at 30000
+    expect(calculateDelay(1, basePolicy, error)).toBe(5000);
+  });
+
+  it('caps retryAfterMs at maxDelayMs', () => {
+    const error = new ProviderRateLimitError('rate limited', 50_000);
+    // retryAfterMs = 50000, capped at 30000
+    expect(calculateDelay(1, basePolicy, error)).toBe(30_000);
+  });
+
+  it('falls back to exponential when ProviderRateLimitError has no retryAfterMs', () => {
+    const error = new ProviderRateLimitError('rate limited', undefined);
+    // No retryAfterMs → use exponential: 1000 * 2^1 = 2000
+    expect(calculateDelay(1, basePolicy, error)).toBe(2000);
+  });
+
+  it('returns 0 when baseDelayMs is 0 and attempt is 0', () => {
+    const zeroBase = { ...basePolicy, baseDelayMs: 0 };
+    expect(calculateDelay(0, zeroBase)).toBe(0);
+  });
+});
+
+// ── AbortSignal in RunInput - Integration ────────────────────────────────────
 
 describe('AbortSignal in RunInput - Integration', () => {
   let provider: MockProvider;
