@@ -493,4 +493,127 @@ describe('policies', () => {
     });
   });
 
+  describe('mergeRetryPolicy', () => {
+    it('partial override merges correctly', () => {
+      const base: RetryPolicy = {
+        maxAttempts: 3, baseDelayMs: 500, maxDelayMs: 30_000, jitter: true,
+      };
+      const override: Partial<RetryPolicy> = { maxAttempts: 5 };
+
+      const result = mergeRetryPolicy(base, override);
+
+      expect(result).toEqual({
+        maxAttempts: 5,
+        baseDelayMs: 500,
+        maxDelayMs: 30_000,
+        jitter: true,
+      });
+    });
+
+    it('undefined override returns base unchanged', () => {
+      const base: RetryPolicy = {
+        maxAttempts: 3, baseDelayMs: 500, maxDelayMs: 30_000, jitter: true,
+      };
+
+      const result = mergeRetryPolicy(base, undefined);
+
+      expect(result).toBe(base);
+    });
+
+    it('override replaces all base fields', () => {
+      const base: RetryPolicy = {
+        maxAttempts: 3, baseDelayMs: 500, maxDelayMs: 30_000, jitter: true,
+      };
+      const override: RetryPolicy = {
+        maxAttempts: 5, baseDelayMs: 1000, maxDelayMs: 60_000, jitter: false,
+      };
+
+      const result = mergeRetryPolicy(base, override);
+
+      expect(result).toEqual(override);
+      // Original base is not mutated
+      expect(base.maxAttempts).toBe(3);
+    });
+  });
+
+  describe('mergeTimeoutPolicy', () => {
+    it('partial override merges correctly', () => {
+      const base: TimeoutPolicy = {
+        generateTimeoutMs: 30_000, toolTimeoutMs: 10_000, totalTimeoutMs: 60_000,
+      };
+      const override: Partial<TimeoutPolicy> = { generateTimeoutMs: 60_000 };
+
+      const result = mergeTimeoutPolicy(base, override);
+
+      expect(result).toEqual({
+        generateTimeoutMs: 60_000,
+        toolTimeoutMs: 10_000,
+        totalTimeoutMs: 60_000,
+      });
+    });
+
+    it('undefined override returns base unchanged', () => {
+      const base: TimeoutPolicy = {
+        generateTimeoutMs: 30_000, toolTimeoutMs: 10_000, totalTimeoutMs: 60_000,
+      };
+
+      const result = mergeTimeoutPolicy(base, undefined);
+
+      expect(result).toBe(base);
+    });
+
+    it('override replaces all base fields', () => {
+      const base: TimeoutPolicy = {
+        generateTimeoutMs: 30_000, toolTimeoutMs: 10_000, totalTimeoutMs: 60_000,
+      };
+      const override: TimeoutPolicy = {
+        generateTimeoutMs: 60_000, toolTimeoutMs: 20_000, totalTimeoutMs: 120_000,
+      };
+
+      const result = mergeTimeoutPolicy(base, override);
+
+      expect(result).toEqual(override);
+    });
+  });
+
+  describe('mergeToolPolicy', () => {
+    it('partial override merges correctly', () => {
+      const base: ToolPolicy = {
+        maxToolRounds: 5, allowParallelTools: false, toolTimeoutMs: 10_000,
+      };
+      const override: Partial<ToolPolicy> = { maxToolRounds: 10 };
+
+      const result = mergeToolPolicy(base, override);
+
+      expect(result).toEqual({
+        maxToolRounds: 10,
+        allowParallelTools: false,
+        toolTimeoutMs: 10_000,
+      });
+    });
+
+    it('undefined override returns base unchanged', () => {
+      const base: ToolPolicy = {
+        maxToolRounds: 5, allowParallelTools: false, toolTimeoutMs: 10_000,
+      };
+
+      const result = mergeToolPolicy(base, undefined);
+
+      expect(result).toBe(base);
+    });
+
+    it('override replaces all base fields', () => {
+      const base: ToolPolicy = {
+        maxToolRounds: 5, allowParallelTools: false, toolTimeoutMs: 10_000,
+      };
+      const override: ToolPolicy = {
+        maxToolRounds: 3, allowParallelTools: true, toolTimeoutMs: 5_000,
+      };
+
+      const result = mergeToolPolicy(base, override);
+
+      expect(result).toEqual(override);
+    });
+  });
+
 });
