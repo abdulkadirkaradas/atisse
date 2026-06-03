@@ -567,4 +567,328 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
       expect(timeoutSpy).not.toHaveBeenCalled();
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Tool execution errors in streaming (flags 5, 6)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('Tool execution errors in streaming', () => {
+    it('yields error chunk on ToolValidationError (fail-fast, no retry) (flag 5)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call-1',
+              name: 'validation-fail-tool',
+              input: { input: 'test' },
+            },
+          },
+          { type: 'done', usage: { prompt: 3, completion: 1, total: 4 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        tools: [validationFailTool],
+        retry: { maxAttempts: 3, baseDelayMs: 10, jitter: false },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      expect((errorChunks[0] as StreamChunk & { type: 'error' }).error).toBeInstanceOf(
+        ToolValidationError,
+      );
+      // Should NOT retry — ToolValidationError is fail-fast
+      expect(provider.wasCalledTimes(1)).toBe(true);
+    });
+
+    it('yields error chunk on ToolNotFoundError (fail-fast, no retry) (flag 6)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call-1',
+              name: 'non-existent-tool',
+              input: { value: 'test' },
+            },
+          },
+          { type: 'done', usage: { prompt: 3, completion: 1, total: 4 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        tools: [echoTool],
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      expect((errorChunks[0] as StreamChunk & { type: 'error' }).error).toBeInstanceOf(
+        ToolNotFoundError,
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Tool round management (flags 12, 13, 14, 23)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('Tool round management', () => {
+    it('yields MaxToolRoundsExceededError when maxToolRounds is 1 and >= check triggers (flag 12)', async () => {
+      provider.reset();
+      // First stream: tool_call triggers tool execution
+      provider.enqueueStream({
+        chunks: [
+          {
+            type: 'tool_call',
+            toolCall: { id: 'call-1', name: 'echo', input: { value: 'test' } },
+          },
+          { type: 'done', usage: { prompt: 3, completion: 1, total: 4 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        tools: [echoTool],
+        toolPolicy: { maxToolRounds: 1 },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      // The maxToolRounds check is BEFORE tool execution (in executeStreamingGenerationRound):
+      //   nextRound = roundCounter + 1 = 1
+      //   1 >= maxToolRounds(1) → true → MaxToolRoundsExceededError
+      // So tool_call is yielded (from stream) but tool_result is NOT (tool not executed).
+      const toolCallChunks = chunks.filter((c) => c.type === 'tool_call');
+      const toolResultChunks = chunks.filter((c) => c.type === 'tool_result');
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+
+      expect(toolCallChunks).toHaveLength(1);
+      expect(toolResultChunks).toHaveLength(0);
+      expect(errorChunks).toHaveLength(1);
+      expect((errorChunks[0] as StreamChunk & { type: 'error' }).error).toBeInstanceOf(
+        MaxToolRoundsExceededError,
+      );
+    });
+
+    it('retries on ToolExecutionError during streaming with backoff (flag 13)', async () => {
+      provider.reset();
+      // First stream: tool_call that triggers failingTool
+      provider.enqueueStream({
+        chunks: [
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call-1',
+              name: 'failing-tool',
+              input: { input: 'test' },
+            },
+          },
+          { type: 'done', usage: { prompt: 3, completion: 1, total: 4 } },
+        ],
+      });
+      // Second stream after retry: text success
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'After retry' },
+          { type: 'done', usage: { prompt: 6, completion: 3, total: 9 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        tools: [failingTool],
+        retry: { maxAttempts: 3, baseDelayMs: 5, jitter: false },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      // Fire pending timers to handle any retry delays in the generation loop
+      const resultPromise = orchestrator.run({ prompt: 'test', stream: true });
+      vi.runAllTimersAsync();
+      const result = (await resultPromise) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      // Should have tool_call, tool_result (from failingTool), then text, then done
+      const textChunks = chunks.filter((c) => c.type === 'text');
+      const toolCallChunks = chunks.filter((c) => c.type === 'tool_call');
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+
+      expect(toolCallChunks).toHaveLength(1);
+      expect(textChunks.length).toBeGreaterThan(0);
+      // No error — ToolExecutionError should be retried and succeed
+      expect(errorChunks).toHaveLength(0);
+    });
+
+    it('supports multiple consecutive tool rounds in streaming (flag 14)', async () => {
+      provider.reset();
+      // Round 1: tool_call for round-one-tool
+      provider.enqueueStream({
+        chunks: [
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call-1',
+              name: 'echo',
+              input: { value: 'round-1' },
+            },
+          },
+          { type: 'done', usage: { prompt: 5, completion: 2, total: 7 } },
+        ],
+      });
+      // Round 2: tool_call for round-two-tool
+      provider.enqueueStream({
+        chunks: [
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call-2',
+              name: 'echo',
+              input: { value: 'round-2' },
+            },
+          },
+          { type: 'done', usage: { prompt: 5, completion: 2, total: 7 } },
+        ],
+      });
+      // Final stream: text answer
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Final answer' },
+          { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        tools: [echoTool],
+        toolPolicy: { maxToolRounds: 5 },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunkTypes: string[] = [];
+      for await (const chunk of result) {
+        chunkTypes.push(chunk.type);
+      }
+
+      // Pattern: tool_call, tool_result, tool_call, tool_result, text, done
+      const callIndices = chunkTypes
+        .map((t, i) => (t === 'tool_call' ? i : -1))
+        .filter((i) => i >= 0);
+      const resultIndices = chunkTypes
+        .map((t, i) => (t === 'tool_result' ? i : -1))
+        .filter((i) => i >= 0);
+      const textIndices = chunkTypes.map((t, i) => (t === 'text' ? i : -1)).filter((i) => i >= 0);
+      const doneIndex = chunkTypes.indexOf('done');
+
+      expect(callIndices).toHaveLength(2);
+      expect(resultIndices).toHaveLength(2);
+      expect(callIndices[0]!).toBeLessThan(resultIndices[0]!);
+      expect(callIndices[1]!).toBeLessThan(resultIndices[1]!);
+      // tool_result of round 1 before tool_call of round 2
+      expect(resultIndices[0]!).toBeLessThan(callIndices[1]!);
+      // Text after all tools
+      expect(textIndices[0]!).toBeGreaterThan(resultIndices[1]!);
+      expect(textIndices[0]!).toBeLessThan(doneIndex);
+      expect(chunkTypes[chunkTypes.length - 1]).toBe('done');
+    });
+
+    it('resets pendingToolCalls after successful tool round for state isolation (flag 23)', async () => {
+      provider.reset();
+      // First stream: tool_call
+      provider.enqueueStream({
+        chunks: [
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call-1',
+              name: 'echo',
+              input: { value: 'first' },
+            },
+          },
+          { type: 'done', usage: { prompt: 5, completion: 2, total: 7 } },
+        ],
+      });
+      // Second stream: no tool_call — text only
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Final' },
+          { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        tools: [echoTool],
+        toolPolicy: { maxToolRounds: 3 },
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      // Should have tool_call, tool_result, text, done — no extra tool_call
+      const toolCallChunks = chunks.filter((c) => c.type === 'tool_call');
+      const toolResultChunks = chunks.filter((c) => c.type === 'tool_result');
+      const textChunks = chunks.filter((c) => c.type === 'text');
+
+      expect(toolCallChunks).toHaveLength(1);
+      expect(toolResultChunks).toHaveLength(1);
+      expect(textChunks.length).toBeGreaterThan(0);
+
+      // Verify the second stream's text came after tool execution
+      const toolResultIndex = chunks.findIndex((c) => c.type === 'tool_result');
+      const textAfterToolResult = chunks
+        .slice(toolResultIndex + 1)
+        .filter((c) => c.type === 'text');
+      expect(textAfterToolResult.length).toBeGreaterThan(0);
+    });
+  });
 });
