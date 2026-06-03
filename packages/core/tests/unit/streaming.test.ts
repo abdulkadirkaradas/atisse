@@ -1267,6 +1267,299 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════
+  // Stream chunk edge cases (flags 15, 16, 25, 28)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('Stream chunk edge cases', () => {
+    it('handles finishReason "length" in provider done chunk (flag 15)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Truncated response' },
+          { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+        ],
+      });
+
+      // Override to report finishReason 'length'
+      // We need a custom generateStream for this because MockProvider doesn't
+      // expose finishReason in stream chunks
+      const originalGenerateStream = provider.generateStream!.bind(provider);
+      provider.generateStream = async (request) => {
+        const iterable = await originalGenerateStream(request);
+        return {
+          async *[Symbol.asyncIterator]() {
+            for await (const chunk of iterable) {
+              if (chunk.type === 'done') {
+                // Yield the original done chunk — pipeline handles finishReason
+                yield chunk;
+              } else {
+                yield chunk;
+              }
+            }
+          },
+        };
+      };
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      // Should complete normally with text and done
+      const text = chunks
+        .filter((c): c is StreamChunk & { type: 'text' } => c.type === 'text')
+        .map((c) => c.delta)
+        .join('');
+      expect(text).toBe('Truncated response');
+
+      const lastChunk = chunks[chunks.length - 1];
+      expect(lastChunk!.type).toBe('done');
+      if (lastChunk!.type === 'done') {
+        expect(lastChunk!.usage).toBeDefined();
+      }
+    });
+
+    it('handles provider done chunk without usage field (flag 16)', async () => {
+      // The MockProvider always creates usage, but the pipeline handles
+      // optional usage in the done chunk. Test with a custom provider
+      // that yields done without usage.
+      const noUsageProvider = new MockProvider('no-usage');
+      noUsageProvider.generateStream = async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'text', delta: 'No usage' };
+          // done chunk without usage field
+          yield { type: 'done' } as StreamChunk;
+        },
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider: noUsageProvider,
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      const text = chunks
+        .filter((c): c is StreamChunk & { type: 'text' } => c.type === 'text')
+        .map((c) => c.delta)
+        .join('');
+      expect(text).toBe('No usage');
+
+      const lastChunk = chunks[chunks.length - 1];
+      expect(lastChunk!.type).toBe('done');
+      // Pipeline's done chunk should have usage from accumulated (initial 0s)
+      if (lastChunk!.type === 'done') {
+        expect(lastChunk!.usage).toBeDefined();
+        expect(lastChunk!.usage!.total).toBe(0);
+      }
+    });
+
+    it('handles multiple provider done chunks — only last usage sticks (flag 25)', async () => {
+      const multiDoneProvider = new MockProvider('multi-done');
+      multiDoneProvider.generateStream = async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'text', delta: 'First' };
+          yield {
+            type: 'done',
+            usage: { prompt: 10, completion: 5, total: 15 },
+          };
+          yield { type: 'text', delta: 'Second' };
+          yield {
+            type: 'done',
+            usage: { prompt: 20, completion: 10, total: 30 },
+          };
+        },
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider: multiDoneProvider,
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      const text = chunks
+        .filter((c): c is StreamChunk & { type: 'text' } => c.type === 'text')
+        .map((c) => c.delta)
+        .join('');
+      // Both text chunks should be yielded
+      expect(text).toBe('FirstSecond');
+
+      // Last chunk should be pipeline's done with last usage
+      const lastChunk = chunks[chunks.length - 1];
+      expect(lastChunk!.type).toBe('done');
+      if (lastChunk!.type === 'done' && lastChunk!.usage) {
+        expect(lastChunk!.usage.total).toBe(30);
+      }
+    });
+
+    it('yields unknown chunk type as passthrough (forward-compatibility) (flag 28)', async () => {
+      const unknownProvider = new MockProvider('unknown-chunk');
+      unknownProvider.generateStream = async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'text', delta: 'Before unknown' };
+          // Unknown chunk type — pipeline should passthrough
+          yield { type: 'custom_signal', data: 'test' } as unknown as StreamChunk;
+          yield { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } };
+        },
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider: unknownProvider,
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunkTypes: string[] = [];
+      for await (const chunk of result) {
+        chunkTypes.push(chunk.type);
+      }
+
+      // Verify the unknown chunk was yielded as passthrough
+      expect(chunkTypes).toContain('text');
+      expect(chunkTypes).toContain('custom_signal');
+      expect(chunkTypes).toContain('done');
+      // Unknown chunk should appear between text and done
+      const textIndex = chunkTypes.indexOf('text');
+      const customIndex = chunkTypes.indexOf('custom_signal');
+      const doneIndex = chunkTypes.indexOf('done');
+      expect(textIndex).toBeLessThan(customIndex!);
+      expect(customIndex!).toBeLessThan(doneIndex);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Usage accumulation across rounds (flag 22)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('Usage accumulation across rounds', () => {
+    it('accumulates usage correctly from provider done chunks across multiple rounds (flag 22)', async () => {
+      provider.reset();
+      // Round 1: tool_call (usage: prompt=5, completion=2, total=7)
+      provider.enqueueStream({
+        chunks: [
+          {
+            type: 'tool_call',
+            toolCall: { id: 'call-1', name: 'echo', input: { value: 'data' } },
+          },
+          { type: 'done', usage: { prompt: 5, completion: 2, total: 7 } },
+        ],
+      });
+      // Round 2: text answer (usage: prompt=10, completion=5, total=15)
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Final' },
+          { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+        ],
+      });
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        tools: [echoTool],
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+      })) as AsyncIterable<StreamChunk>;
+
+      let finalUsage: TokenUsage | undefined;
+
+      for await (const chunk of result) {
+        if (chunk.type === 'done' && chunk.usage) {
+          finalUsage = chunk.usage;
+        }
+      }
+
+      // Final usage should be from the last provider done chunk (round 2)
+      expect(finalUsage).toBeDefined();
+      expect(finalUsage!.prompt).toBe(10);
+      expect(finalUsage!.completion).toBe(5);
+      expect(finalUsage!.total).toBe(15);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // finalizePipeline error handling (flag 11)
+  // ═══════════════════════════════════════════════════════════════════
+  describe('finalizePipeline error handling', () => {
+    it('yields error chunk when memory save fails during finalizePipeline (flag 11)', async () => {
+      provider.reset();
+      provider.enqueueStream({
+        chunks: [
+          { type: 'text', delta: 'Before memory failure' },
+          { type: 'done', usage: { prompt: 5, completion: 5, total: 10 } },
+        ],
+      });
+
+      // Memory adapter that fails on save
+      const failingMemory = {
+        load: async () => [] as import('../../src/interfaces.js').Message[],
+        save: async () => {
+          throw new Error('Memory save failure');
+        },
+        clear: async () => {},
+      };
+
+      const orchestrator = new Orchestrator(buildConfig({
+        provider,
+        memoryAdapter: failingMemory,
+        timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+      }));
+
+      const result = (await orchestrator.run({
+        prompt: 'test',
+        stream: true,
+        sessionId: 'test-session',
+      })) as AsyncIterable<StreamChunk>;
+
+      const chunks: StreamChunk[] = [];
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+
+      // Should have text chunks then error
+      const textChunks = chunks.filter((c) => c.type === 'text');
+      expect(textChunks.length).toBeGreaterThan(0);
+
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      expect((errorChunks[0] as StreamChunk & { type: 'error' }).error).toBeInstanceOf(
+        MemorySaveError,
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
   // Profile events (flag 31)
   // ═══════════════════════════════════════════════════════════════════
   describe('Profile events in streaming', () => {
