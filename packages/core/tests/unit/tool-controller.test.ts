@@ -349,6 +349,296 @@ describe('ToolController', () => {
       // If the OrchestratorError were wrapped it would be ToolExecutionError — verify it's not
       await expect(controller.executeRound([toolCall])).rejects.not.toThrow(ToolExecutionError);
     });
+
+    // ── Gap 1: oneOf branch ─────────────────────────────────────────
+    it('rejects input not matching any oneOf branch - FATAL', async () => {
+      const tool = createTool(
+        'oneof',
+        { oneOf: [{ type: 'string' }, { type: 'number' }] },
+        async (input) => input,
+      );
+      const tools = new Map([['oneof', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      const toolCall: ToolCall = { id: '1', name: 'oneof', input: true };
+
+      await expect(controller.executeRound([toolCall])).rejects.toThrow(ToolValidationError);
+    });
+
+    // ── Gap 2: empty toolCalls ──────────────────────────────────────
+    it('returns empty array for empty toolCalls', async () => {
+      const controller = new ToolController(new Map(), createPolicy(), createLogger());
+
+      const results = await controller.executeRound([]);
+
+      expect(results).toEqual([]);
+    });
+
+    // ── Gap 3: empty enum array ─────────────────────────────────────
+    it('accepts any string when enum array is empty (falls through to plain string)', async () => {
+      const tool = createTool(
+        'empty-enum',
+        { type: 'string', enum: [] },
+        async (input) => input,
+      );
+      const tools = new Map([['empty-enum', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      const results = await controller.executeRound([
+        { id: '1', name: 'empty-enum', input: 'anything-goes' },
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.output).toBe('anything-goes');
+    });
+
+    // ── Gap 4: non-string enum values ───────────────────────────────
+    it('accepts any string when enum contains non-string values (falls through to plain string)', async () => {
+      const tool = createTool(
+        'non-string-enum',
+        { type: 'string', enum: [1, 2, 3] },
+        async (input) => input,
+      );
+      const tools = new Map([['non-string-enum', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      const results = await controller.executeRound([
+        { id: '1', name: 'non-string-enum', input: 'anything-goes' },
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.output).toBe('anything-goes');
+    });
+
+    // ── Gap 5: missing properties ───────────────────────────────────
+    it('accepts empty object when object schema has no properties field', async () => {
+      const tool = createTool(
+        'no-props',
+        { type: 'object' },
+        async (input) => input,
+      );
+      const tools = new Map([['no-props', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      const results = await controller.executeRound([
+        { id: '1', name: 'no-props', input: {} },
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.output).toEqual({});
+    });
+
+    it('rejects object with keys when object schema has no properties field', async () => {
+      const tool = createTool(
+        'no-props-reject',
+        { type: 'object' },
+        async (input) => input,
+      );
+      const tools = new Map([['no-props-reject', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      await expect(
+        controller.executeRound([
+          { id: '1', name: 'no-props-reject', input: { key: 'value' } },
+        ]),
+      ).rejects.toThrow(ToolValidationError);
+    });
+
+    // ── Gap 6: NaN/Infinity guard ───────────────────────────────────
+    it('skips minimum constraint when minimum is NaN', async () => {
+      const tool = createTool(
+        'nan-min',
+        { type: 'number', minimum: NaN },
+        async (input) => input,
+      );
+      const tools = new Map([['nan-min', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      const results = await controller.executeRound([
+        { id: '1', name: 'nan-min', input: -999 },
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.output).toBe(-999);
+    });
+
+    // ── Gap 7: single element union ─────────────────────────────────
+    it('validates input against single-element anyOf', async () => {
+      const tool = createTool(
+        'single-anyof',
+        { anyOf: [{ type: 'string' }] },
+        async (input) => input,
+      );
+      const tools = new Map([['single-anyof', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      const results = await controller.executeRound([
+        { id: '1', name: 'single-anyof', input: 'hello' },
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.output).toBe('hello');
+    });
+
+    it('rejects input not matching single-element anyOf', async () => {
+      const tool = createTool(
+        'single-anyof-reject',
+        { anyOf: [{ type: 'string' }] },
+        async (input) => input,
+      );
+      const tools = new Map([['single-anyof-reject', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      await expect(
+        controller.executeRound([
+          { id: '1', name: 'single-anyof-reject', input: 42 },
+        ]),
+      ).rejects.toThrow(ToolValidationError);
+    });
+
+    // ── Gap 8: single / 3+ element allOf ────────────────────────────
+    it('validates input against single-element allOf', async () => {
+      const tool = createTool(
+        'single-allof',
+        { allOf: [{ type: 'number' }] },
+        async (input) => input,
+      );
+      const tools = new Map([['single-allof', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      const results = await controller.executeRound([
+        { id: '1', name: 'single-allof', input: 42 },
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.output).toBe(42);
+    });
+
+    it('accepts full 3-element allOf intersection', async () => {
+      const tool = createTool(
+        'triple-allof',
+        {
+          allOf: [
+            { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] },
+            { type: 'object', properties: { b: { type: 'number' } }, required: ['b'] },
+            { type: 'object', properties: { c: { type: 'boolean' } }, required: ['c'] },
+          ],
+        },
+        async (input) => input,
+      );
+      const tools = new Map([['triple-allof', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      const results = await controller.executeRound([
+        { id: '1', name: 'triple-allof', input: { a: 'hello', b: 42, c: true } },
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.output).toEqual({ a: 'hello', b: 42, c: true });
+    });
+
+    it('rejects partial 3-element allOf intersection', async () => {
+      const tool = createTool(
+        'triple-allof-reject',
+        {
+          allOf: [
+            { type: 'object', properties: { a: { type: 'string' } }, required: ['a'] },
+            { type: 'object', properties: { b: { type: 'number' } }, required: ['b'] },
+            { type: 'object', properties: { c: { type: 'boolean' } }, required: ['c'] },
+          ],
+        },
+        async (input) => input,
+      );
+      const tools = new Map([['triple-allof-reject', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      await expect(
+        controller.executeRound([
+          { id: '1', name: 'triple-allof-reject', input: { a: 'hello', b: 42 } },
+        ]),
+      ).rejects.toThrow(ToolValidationError);
+    });
+
+    // ── Gap 9: type + composition priority ──────────────────────────
+    it('composition keyword takes priority over type when both are present', async () => {
+      const tool = createTool(
+        'compose-priority',
+        { type: 'string', anyOf: [{ type: 'number' }] },
+        async (input) => input,
+      );
+      const tools = new Map([['compose-priority', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      // number matches the anyOf branch even though type is string
+      const results = await controller.executeRound([
+        { id: '1', name: 'compose-priority', input: 42 },
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.output).toBe(42);
+    });
+
+    // ── Gap 10: extra keys rejected by strictObject ─────────────────
+    it('rejects object with undeclared keys via strictObject', async () => {
+      const tool = createTool(
+        'strict-obj',
+        { type: 'object', properties: { x: { type: 'string' } } },
+        async (input) => input,
+      );
+      const tools = new Map([['strict-obj', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      await expect(
+        controller.executeRound([
+          { id: '1', name: 'strict-obj', input: { x: 'ok', extra: 'bad' } },
+        ]),
+      ).rejects.toThrow(ToolValidationError);
+    });
+
+    // ── Gap 11: non-Error throw ─────────────────────────────────────
+    it('wraps non-Error string throw in ToolExecutionError', async () => {
+      const tool = createTool(
+        'string-throw',
+        { type: 'object', properties: {} },
+        async () => {
+          throw 'string-error';
+        },
+      );
+      const tools = new Map([['string-throw', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      let error: unknown;
+      try {
+        await controller.executeRound([{ id: '1', name: 'string-throw', input: {} }]);
+      } catch (e) {
+        error = e;
+      }
+      expect(error).toBeInstanceOf(ToolExecutionError);
+      expect((error as ToolExecutionError).cause).toBeInstanceOf(Error);
+      expect(((error as ToolExecutionError).cause as Error).message).toBe('string-error');
+    });
+
+    it('wraps null throw in ToolExecutionError', async () => {
+      const tool = createTool(
+        'null-throw',
+        { type: 'object', properties: {} },
+        async () => {
+          throw null;
+        },
+      );
+      const tools = new Map([['null-throw', tool]]);
+      const controller = new ToolController(tools, createPolicy(), createLogger());
+
+      let error: unknown;
+      try {
+        await controller.executeRound([{ id: '1', name: 'null-throw', input: {} }]);
+      } catch (e) {
+        error = e;
+      }
+      expect(error).toBeInstanceOf(ToolExecutionError);
+      expect((error as ToolExecutionError).cause).toBeInstanceOf(Error);
+      expect(((error as ToolExecutionError).cause as Error).message).toBe('null');
+    });
   });
 
   describe('executeWithTimeout', () => {
