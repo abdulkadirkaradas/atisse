@@ -38,7 +38,11 @@ class InternalEventBus implements EventBus {
             await result;
           } catch (error) {
             // Notify caller if callback provided; otherwise silently swallow per ADR-004
-            this.onListenerError?.(error, event.type);
+            try {
+              this.onListenerError?.(error, event.type);
+            } catch {
+              // Silently swallow per ADR-004 — onListenerError itself must not produce unhandled rejections
+            }
           }
         })();
       }
