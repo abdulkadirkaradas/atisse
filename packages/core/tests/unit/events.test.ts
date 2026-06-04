@@ -329,5 +329,21 @@ describe('events', () => {
       expect(onError).toHaveBeenCalledTimes(1);
       expect(onError).toHaveBeenCalledWith(expect.any(Error), 'run.started');
     });
+
+    it('calls onListenerError for each failing async listener', async () => {
+      const onError = vi.fn();
+      const bus = createEventBus(onError);
+      bus.on('run.started', async () => {
+        throw new Error('fail 1');
+      });
+      bus.on('run.started', async () => {
+        throw new Error('fail 2');
+      });
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      expect(onError).toHaveBeenCalledTimes(2);
+    });
   });
 });
