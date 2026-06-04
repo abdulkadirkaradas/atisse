@@ -85,6 +85,31 @@ describe('profile', () => {
         expect(result.retry.baseDelayMs).toBe(500);
         expect(result.retry.jitter).toBe(true);
       });
+
+      it('applies timeout partial overrides to defaults when no profile', () => {
+        const config = createConfig({ timeout: { generateTimeoutMs: 45_000 } });
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.timeout.generateTimeoutMs).toBe(45_000);
+        expect(result.timeout.toolTimeoutMs).toBe(10_000);
+        expect(result.timeout.totalTimeoutMs).toBe(60_000);
+      });
+
+      it('applies toolPolicy partial overrides to defaults when no profile', () => {
+        const config = createConfig({ toolPolicy: { maxToolRounds: 8 } });
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.toolPolicy.maxToolRounds).toBe(8);
+        expect(result.toolPolicy.allowParallelTools).toBe(false);
+      });
+
+      it('toolPolicy.toolTimeoutMs syncs from timeout.toolTimeoutMs when no profile', () => {
+        const config = createConfig({ timeout: { toolTimeoutMs: 25_000 } });
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.timeout.toolTimeoutMs).toBe(25_000);
+        expect(result.toolPolicy.toolTimeoutMs).toBe(25_000);
+      });
     });
 
     describe('with profile', () => {
