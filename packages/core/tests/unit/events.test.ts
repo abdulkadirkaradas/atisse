@@ -201,6 +201,34 @@ describe('events', () => {
 
       expect(listener).toHaveBeenCalledTimes(1);
     });
+
+    it('sync function returning resolved Promise does not trigger onListenerError', async () => {
+      const onError = vi.fn();
+      const bus = createEventBus(onError);
+      bus.on('run.started', () => {
+        return Promise.resolve('sync fn returning promise');
+      });
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('sync function returning rejected Promise triggers onListenerError', async () => {
+      const onError = vi.fn();
+      const bus = createEventBus(onError);
+      const testError = new Error('sync fn returning rejected promise');
+      bus.on('run.started', () => {
+        return Promise.reject(testError);
+      });
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(testError, 'run.started');
+    });
   });
 
   describe('onListenerError callback (Fix 2)', () => {
