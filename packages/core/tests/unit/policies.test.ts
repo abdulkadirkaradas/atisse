@@ -17,7 +17,6 @@ import {
   ProviderTimeoutError,
   ProviderAuthError,
   MaxRetriesExceededError,
-  TimeoutExceededError,
   RunCancelledError,
 } from '../../src/errors.js';
 import type { RetryPolicy, TimeoutPolicy, ToolPolicy } from '../../src/interfaces.js';
