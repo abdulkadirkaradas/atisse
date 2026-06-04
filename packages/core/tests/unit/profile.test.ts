@@ -279,5 +279,76 @@ describe('profile', () => {
         expect(result.contextProviders).toHaveLength(1);
       });
     });
+
+    describe('toolDefinitions', () => {
+      it('is defined with correct fields when tools exist', () => {
+        const baseTools = new Map<string, Tool>([
+          [
+            'test-tool',
+            {
+              name: 'test-tool',
+              description: 'A test tool',
+              inputSchema: { type: 'object', properties: {} },
+              execute: async () => 'result',
+            } as Tool,
+          ],
+        ]);
+        const config = createConfig();
+        const result = resolveConfig(config, undefined, baseTools);
+
+        expect(result.toolDefinitions).toBeDefined();
+        expect(result.toolDefinitions).toHaveLength(1);
+        expect(result.toolDefinitions![0]).toEqual({
+          name: 'test-tool',
+          description: 'A test tool',
+          inputSchema: { type: 'object', properties: {} },
+        });
+        expect(result.toolDefinitions![0]).not.toHaveProperty('execute');
+      });
+
+      it('is undefined when tools map is empty', () => {
+        const config = createConfig();
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.toolDefinitions).toBeUndefined();
+      });
+
+      it('reflects profile tools when profile replaces base tools', () => {
+        const baseTools = new Map<string, Tool>([
+          [
+            'base-tool',
+            {
+              name: 'base-tool',
+              description: 'base desc',
+              inputSchema: {},
+              execute: async () => {},
+            } as Tool,
+          ],
+        ]);
+        const config = createConfig({
+          profiles: {
+            test: createProfile('test', {
+              tools: [
+                {
+                  name: 'profile-tool',
+                  description: 'profile desc',
+                  inputSchema: { type: 'object' },
+                  execute: async () => 'result',
+                } as Tool,
+              ],
+            }),
+          },
+        });
+        const result = resolveConfig(config, 'test', baseTools);
+
+        expect(result.toolDefinitions).toBeDefined();
+        expect(result.toolDefinitions).toHaveLength(1);
+        expect(result.toolDefinitions![0]).toEqual({
+          name: 'profile-tool',
+          description: 'profile desc',
+          inputSchema: { type: 'object' },
+        });
+      });
+    });
   });
 });
