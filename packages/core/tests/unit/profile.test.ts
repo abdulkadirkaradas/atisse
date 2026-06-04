@@ -248,6 +248,12 @@ describe('profile', () => {
 
         expect(() => resolveConfig(config, 'unknown', new Map())).toThrow(ConfigValidationError);
       });
+
+      it('throws ConfigValidationError when profiles is undefined', () => {
+        const config = createConfig();
+
+        expect(() => resolveConfig(config, 'test', new Map())).toThrow(ConfigValidationError);
+      });
     });
 
     describe('profile contextProviders', () => {
