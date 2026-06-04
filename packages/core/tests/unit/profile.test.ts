@@ -8,6 +8,11 @@ import type {
   HookRegistry,
   Tool,
   RunContext,
+  AfterRunContext,
+  BeforeGenerateContext,
+  AfterGenerateContext,
+  ToolContext,
+  AfterToolContext,
 } from '../../src/interfaces.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 
