@@ -119,6 +119,14 @@ describe('events', () => {
       expect(listener).not.toHaveBeenCalled();
     });
 
+    it('does not call the same listener reference twice when registered twice', () => {
+      const listener = vi.fn();
+      eventBus.on('run.started', listener);
+      eventBus.on('run.started', listener);
+      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
     it('supports re-subscribing after all listeners for a type are unsubscribed', () => {
       const listener1 = vi.fn();
       const unsubscribe = eventBus.on('run.started', listener1);
