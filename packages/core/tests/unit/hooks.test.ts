@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { runHooks, normalizeHookRegistry } from '../../src/hooks.js';
 import { HookExecutionError } from '../../src/errors.js';
-import type { HookRegistry, RunContext } from '../../src/interfaces.js';
+import type {
+  HookRegistry,
+  RunContext,
+  AfterRunContext,
+  BeforeGenerateContext,
+  AfterGenerateContext,
+  ToolContext,
+  AfterToolContext,
+} from '../../src/interfaces.js';
 
 describe('hooks', () => {
   describe('runHooks()', () => {
@@ -244,6 +252,84 @@ describe('hooks', () => {
 
       expect(result.beforeRun).toHaveLength(1);
       expect(result.beforeRun[0]).toBe(beforeRunHook);
+    });
+
+    // ── HIGH PRIORITY ─────────────────────────────────────────────
+
+    it('defaults all other fields to empty array when partial provides one field', () => {
+      const beforeRunHook = async (ctx: RunContext) => ctx;
+      const partial: Partial<HookRegistry> = { beforeRun: [beforeRunHook] };
+
+      const result = normalizeHookRegistry(partial);
+
+      expect(result.beforeRun).toHaveLength(1);
+      expect(result.beforeRun[0]).toBe(beforeRunHook);
+      expect(result.afterRun).toEqual([]);
+      expect(result.beforeGenerate).toEqual([]);
+      expect(result.afterGenerate).toEqual([]);
+      expect(result.beforeTool).toEqual([]);
+      expect(result.afterTool).toEqual([]);
+    });
+
+    // ── MEDIUM PRIORITY ───────────────────────────────────────────
+
+    it('preserves all six arrays when full HookRegistry is provided', () => {
+      const beforeRunHook = async (ctx: RunContext) => ctx;
+      const afterRunHook = async (ctx: AfterRunContext) => ctx;
+      const beforeGenerateHook = async (ctx: BeforeGenerateContext) => ctx;
+      const afterGenerateHook = async (ctx: AfterGenerateContext) => ctx;
+      const beforeToolHook = async (ctx: ToolContext) => ctx;
+      const afterToolHook = async (ctx: AfterToolContext) => ctx;
+
+      const full: HookRegistry = {
+        beforeRun: [beforeRunHook],
+        afterRun: [afterRunHook],
+        beforeGenerate: [beforeGenerateHook],
+        afterGenerate: [afterGenerateHook],
+        beforeTool: [beforeToolHook],
+        afterTool: [afterToolHook],
+      };
+
+      const result = normalizeHookRegistry(full);
+
+      expect(result.beforeRun).toEqual([beforeRunHook]);
+      expect(result.afterRun).toEqual([afterRunHook]);
+      expect(result.beforeGenerate).toEqual([beforeGenerateHook]);
+      expect(result.afterGenerate).toEqual([afterGenerateHook]);
+      expect(result.beforeTool).toEqual([beforeToolHook]);
+      expect(result.afterTool).toEqual([afterToolHook]);
+    });
+
+    it('defaults fields to empty array when null is explicitly passed', () => {
+      const result = normalizeHookRegistry({
+        beforeRun: null,
+        afterRun: null,
+        beforeGenerate: null,
+        afterGenerate: null,
+        beforeTool: null,
+        afterTool: null,
+      } as unknown as Partial<HookRegistry>);
+
+      expect(result.beforeRun).toEqual([]);
+      expect(result.afterRun).toEqual([]);
+      expect(result.beforeGenerate).toEqual([]);
+      expect(result.afterGenerate).toEqual([]);
+      expect(result.beforeTool).toEqual([]);
+      expect(result.afterTool).toEqual([]);
+    });
+
+    // ── LOW PRIORITY ──────────────────────────────────────────────
+
+    it('preserves empty arrays when provided in partial (?? preserves [])', () => {
+      const result = normalizeHookRegistry({ beforeRun: [] });
+
+      // The provided empty array should be used (not replaced by default)
+      expect(result.beforeRun).toEqual([]);
+      expect(result.afterRun).toEqual([]);
+      expect(result.beforeGenerate).toEqual([]);
+      expect(result.afterGenerate).toEqual([]);
+      expect(result.beforeTool).toEqual([]);
+      expect(result.afterTool).toEqual([]);
     });
   });
 });
