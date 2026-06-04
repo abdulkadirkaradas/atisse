@@ -350,5 +350,136 @@ describe('profile', () => {
         });
       });
     });
+
+    describe('edge cases and passthrough', () => {
+      it('memoryAdapter from base config appears in resolved result', () => {
+        const memoryAdapter = {
+          load: async () => [],
+          save: async () => {},
+          clear: async () => {},
+        };
+        const config = createConfig({ memoryAdapter });
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.memoryAdapter).toBe(memoryAdapter);
+      });
+
+      it('logger defaults to noOpLogger when not provided', () => {
+        const config = createConfig();
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.logger.debug).toEqual(expect.any(Function));
+        expect(result.logger.info).toEqual(expect.any(Function));
+        expect(result.logger.warn).toEqual(expect.any(Function));
+        expect(result.logger.error).toEqual(expect.any(Function));
+      });
+
+      it('all 6 hook points are concatenated (base first, profile second)', () => {
+        const baseBeforeRun = vi.fn((ctx: RunContext) => ctx);
+        const profileBeforeRun = vi.fn((ctx: RunContext) => ctx);
+        const baseAfterRun = vi.fn((ctx: AfterRunContext) => ctx);
+        const profileAfterRun = vi.fn((ctx: AfterRunContext) => ctx);
+        const baseBeforeGenerate = vi.fn((ctx: BeforeGenerateContext) => ctx);
+        const profileBeforeGenerate = vi.fn((ctx: BeforeGenerateContext) => ctx);
+        const baseAfterGenerate = vi.fn((ctx: AfterGenerateContext) => ctx);
+        const profileAfterGenerate = vi.fn((ctx: AfterGenerateContext) => ctx);
+        const baseBeforeTool = vi.fn((ctx: ToolContext) => ctx);
+        const profileBeforeTool = vi.fn((ctx: ToolContext) => ctx);
+        const baseAfterTool = vi.fn((ctx: AfterToolContext) => ctx);
+        const profileAfterTool = vi.fn((ctx: AfterToolContext) => ctx);
+
+        const config = createConfig({
+          hooks: {
+            beforeRun: [baseBeforeRun],
+            afterRun: [baseAfterRun],
+            beforeGenerate: [baseBeforeGenerate],
+            afterGenerate: [baseAfterGenerate],
+            beforeTool: [baseBeforeTool],
+            afterTool: [baseAfterTool],
+          },
+          profiles: {
+            test: createProfile('test', {
+              hooks: {
+                beforeRun: [profileBeforeRun],
+                afterRun: [profileAfterRun],
+                beforeGenerate: [profileBeforeGenerate],
+                afterGenerate: [profileAfterGenerate],
+                beforeTool: [profileBeforeTool],
+                afterTool: [profileAfterTool],
+              },
+            }),
+          },
+        });
+        const result = resolveConfig(config, 'test', new Map());
+
+        expect(result.hooks.beforeRun).toHaveLength(2);
+        expect(result.hooks.beforeRun[0]).toBe(baseBeforeRun);
+        expect(result.hooks.beforeRun[1]).toBe(profileBeforeRun);
+
+        expect(result.hooks.afterRun).toHaveLength(2);
+        expect(result.hooks.afterRun[0]).toBe(baseAfterRun);
+        expect(result.hooks.afterRun[1]).toBe(profileAfterRun);
+
+        expect(result.hooks.beforeGenerate).toHaveLength(2);
+        expect(result.hooks.beforeGenerate[0]).toBe(baseBeforeGenerate);
+        expect(result.hooks.beforeGenerate[1]).toBe(profileBeforeGenerate);
+
+        expect(result.hooks.afterGenerate).toHaveLength(2);
+        expect(result.hooks.afterGenerate[0]).toBe(baseAfterGenerate);
+        expect(result.hooks.afterGenerate[1]).toBe(profileAfterGenerate);
+
+        expect(result.hooks.beforeTool).toHaveLength(2);
+        expect(result.hooks.beforeTool[0]).toBe(baseBeforeTool);
+        expect(result.hooks.beforeTool[1]).toBe(profileBeforeTool);
+
+        expect(result.hooks.afterTool).toHaveLength(2);
+        expect(result.hooks.afterTool[0]).toBe(baseAfterTool);
+        expect(result.hooks.afterTool[1]).toBe(profileAfterTool);
+      });
+
+      it('originalConfig equals the base config passed to resolveConfig', () => {
+        const config = createConfig();
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.originalConfig).toBe(config);
+      });
+
+      it('contextProviders defaults to [] when base.contextProviders is undefined', () => {
+        const config: OrchestratorConfig = {
+          provider: baseProvider,
+          systemPrompt: 'base system prompt',
+          tools: [],
+          retry: { maxAttempts: 1, baseDelayMs: 100, maxDelayMs: 1000, jitter: false },
+        };
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.contextProviders).toEqual([]);
+      });
+
+      it('systemPrompt is absent from result when neither base nor profile defines it', () => {
+        const config: OrchestratorConfig = {
+          provider: baseProvider,
+          tools: [],
+          retry: { maxAttempts: 1, baseDelayMs: 100, maxDelayMs: 1000, jitter: false },
+        };
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result).not.toHaveProperty('systemPrompt');
+      });
+
+      it('fallbackProvider is absent from result when not provided', () => {
+        const config = createConfig();
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result).not.toHaveProperty('fallbackProvider');
+      });
+
+      it('memoryAdapter is absent from result when not provided', () => {
+        const config = createConfig();
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result).not.toHaveProperty('memoryAdapter');
+      });
+    });
   });
 });
