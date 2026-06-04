@@ -65,7 +65,7 @@ describe('profile', () => {
     });
 
     describe('no profile', () => {
-      it('returns ResolvedConfig with all defaults', () => {
+      it('returns ResolvedConfig with base config values and defaults for unset fields', () => {
         const config = createConfig();
         const result = resolveConfig(config, undefined, new Map());
 
@@ -83,6 +83,7 @@ describe('profile', () => {
 
         expect(result.retry.maxAttempts).toBe(5);
         expect(result.retry.baseDelayMs).toBe(500);
+        expect(result.retry.jitter).toBe(true);
       });
     });
 
@@ -157,6 +158,7 @@ describe('profile', () => {
         expect(result.retry.maxAttempts).toBe(5);
         // But baseDelayMs goes back to DEFAULT (500) because profile retry replaces entirely
         expect(result.retry.baseDelayMs).toBe(500);
+        expect(result.retry.jitter).toBe(true);
       });
 
       it('profile hooks concatenated (base first, profile second)', () => {
