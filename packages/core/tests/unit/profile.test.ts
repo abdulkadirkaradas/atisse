@@ -200,6 +200,49 @@ describe('profile', () => {
         expect(result.hooks.beforeRun[1]).toBe(profileHook);
       });
 
+      it('profile fallbackProvider replaces base fallbackProvider', () => {
+        const baseFallback = new MockProvider('base-fallback');
+        const profileFallback = new MockProvider('profile-fallback');
+        const config = createConfig({
+          fallbackProvider: baseFallback,
+          profiles: { test: createProfile('test', { fallbackProvider: profileFallback }) },
+        });
+        const result = resolveConfig(config, 'test', new Map());
+
+        expect(result.fallbackProvider).toBe(profileFallback);
+      });
+
+      it('profile timeout partial replaces default timeout values', () => {
+        const config = createConfig({
+          profiles: { test: createProfile('test', { timeout: { generateTimeoutMs: 60_000 } }) },
+        });
+        const result = resolveConfig(config, 'test', new Map());
+
+        expect(result.timeout.generateTimeoutMs).toBe(60_000);
+        expect(result.timeout.toolTimeoutMs).toBe(10_000);
+        expect(result.timeout.totalTimeoutMs).toBe(60_000);
+      });
+
+      it('profile toolPolicy partial replaces default toolPolicy values', () => {
+        const config = createConfig({
+          profiles: { test: createProfile('test', { toolPolicy: { maxToolRounds: 10 } }) },
+        });
+        const result = resolveConfig(config, 'test', new Map());
+
+        expect(result.toolPolicy.maxToolRounds).toBe(10);
+        expect(result.toolPolicy.allowParallelTools).toBe(false);
+      });
+
+      it('toolPolicy.toolTimeoutMs syncs from timeout.toolTimeoutMs after profile merge', () => {
+        const config = createConfig({
+          profiles: { test: createProfile('test', { timeout: { toolTimeoutMs: 20_000 } }) },
+        });
+        const result = resolveConfig(config, 'test', new Map());
+
+        expect(result.timeout.toolTimeoutMs).toBe(20_000);
+        expect(result.toolPolicy.toolTimeoutMs).toBe(20_000);
+      });
+
       it('throws ConfigValidationError for unknown profile key', () => {
         const config = createConfig({ profiles: { test: createProfile('test') } });
 
