@@ -218,6 +218,28 @@ describe('events', () => {
       expect(onError).not.toHaveBeenCalled();
     });
 
+    it('does NOT produce unhandled rejection when onListenerError itself throws', async () => {
+      const onError = vi.fn().mockImplementation(() => {
+        throw new Error('callback itself throws');
+      });
+      const bus = createEventBus(onError);
+      bus.on('run.started', async () => {
+        throw new Error('async listener fail');
+      });
+
+      const unhandledRejectionHandler = vi.fn();
+      process.on('unhandledRejection', unhandledRejectionHandler);
+
+      bus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+
+      await new Promise<void>((resolve) => process.nextTick(resolve));
+
+      process.removeListener('unhandledRejection', unhandledRejectionHandler);
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(unhandledRejectionHandler).not.toHaveBeenCalled();
+    });
+
     it('mixed async success/failure isolates correctly', async () => {
       const onError = vi.fn();
       const bus = createEventBus(onError);
