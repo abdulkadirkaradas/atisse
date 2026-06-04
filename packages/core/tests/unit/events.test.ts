@@ -109,6 +109,27 @@ describe('events', () => {
       expect(runListener).toHaveBeenCalledTimes(1);
       expect(toolListener).toHaveBeenCalledTimes(1);
     });
+
+    it('unsubscribe is idempotent when called twice', () => {
+      const listener = vi.fn();
+      const unsubscribe = eventBus.on('run.started', listener);
+      unsubscribe();
+      expect(() => unsubscribe()).not.toThrow();
+      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('supports re-subscribing after all listeners for a type are unsubscribed', () => {
+      const listener1 = vi.fn();
+      const unsubscribe = eventBus.on('run.started', listener1);
+      unsubscribe();
+
+      const listener2 = vi.fn();
+      eventBus.on('run.started', listener2);
+      eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() });
+      expect(listener1).not.toHaveBeenCalled();
+      expect(listener2).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('instanceof Promise guard (Fix 1)', () => {
