@@ -81,6 +81,20 @@ describe('events', () => {
         eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() }),
       ).not.toThrow();
     });
+
+    it('sync listener throw short-circuits remaining async listeners', () => {
+      const syncThrowListener = () => {
+        throw new Error('sync fail');
+      };
+      const afterListener = vi.fn(async () => {});
+      eventBus.on('run.started', syncThrowListener);
+      eventBus.on('run.started', afterListener);
+
+      expect(() =>
+        eventBus.emit({ type: 'run.started', runId: '123', timestamp: Date.now() }),
+      ).toThrow('sync fail');
+      expect(afterListener).not.toHaveBeenCalled();
+    });
   });
 
   describe('on()', () => {
