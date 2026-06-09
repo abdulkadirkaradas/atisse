@@ -1082,4 +1082,41 @@ describe('Integration: Orchestrator Core Run', () => {
       });
     });
   });
+
+  describe('Memory error handling', () => {
+    it('propagates error when memory load fails', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response' });
+
+      const memory = new MockMemoryAdapter();
+      memory.loadError = new ProviderUnavailableError('Database unavailable');
+
+      const orchestrator = new Orchestrator({ provider, memoryAdapter: memory });
+
+      await expect(
+        orchestrator.run({ prompt: 'test', sessionId: 'session-load-fail' }),
+      ).rejects.toThrow(ProviderUnavailableError);
+      expect(provider.wasCalledTimes(0)).toBe(true);
+    });
+  });
+
+  describe('Tool resolution errors', () => {
+    it('throws ToolNotFoundError for unregistered tool name (fail-fast)', async () => {
+      const provider = createProvider();
+      provider.enqueue({
+        text: '',
+        toolCalls: [{ id: 'call-1', name: 'unknown-tool', input: {} }],
+        finishReason: 'tool_calls',
+      });
+
+      const orchestrator = new Orchestrator({
+        provider,
+        tools: [],
+      });
+
+      await expect(orchestrator.run({ prompt: 'test' })).rejects.toThrow(ToolNotFoundError);
+      // Provider should only be called once (initial generate) — fail-fast after tool validation
+      expect(provider.wasCalledTimes(1)).toBe(true);
+    });
+  });
 });
