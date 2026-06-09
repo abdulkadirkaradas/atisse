@@ -839,4 +839,19 @@ describe('Integration: Orchestrator Core Run', () => {
       vi.useRealTimers();
     });
   });
+
+  describe('Provider non-retryable error handling', () => {
+    it('throws ProviderMalformedResponse immediately without retry', async () => {
+      const provider = createProvider();
+      provider.enqueue({ error: new ProviderMalformedResponse('Malformed JSON response') });
+
+      const orchestrator = new Orchestrator({
+        provider,
+        retry: { maxAttempts: 3, baseDelayMs: 10, jitter: false },
+      });
+
+      await expect(orchestrator.run({ prompt: 'test' })).rejects.toThrow(ProviderMalformedResponse);
+      expect(provider.wasCalledTimes(1)).toBe(true);
+    });
+  });
 });
