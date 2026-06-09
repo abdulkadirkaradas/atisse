@@ -671,4 +671,120 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
 
     expect(provider.callCount()).toBe(1);
   });
+
+  // ── HIGH PRIORITY: Coverage gap tests ─────────────────────────────────
+
+  it('stream idle timeout between chunks yields TimeoutExceededError', async () => {
+    vi.useRealTimers();
+
+    // Custom provider that introduces a real delay between chunks
+    const delayedProvider: AIProvider = {
+      id: 'delayed',
+      capabilities: { streaming: true, toolCalling: false, vision: false, maxContextTokens: 128_000 },
+      generate: async () => ({
+        text: '',
+        toolCalls: [],
+        usage: { prompt: 0, completion: 0, total: 0 },
+        finishReason: 'stop' as const,
+      }),
+      generateStream: async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'text' as const, delta: 'Hello ' };
+          // Delay longer than generateTimeoutMs to trigger idle timeout
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          yield { type: 'text' as const, delta: 'World' };
+          yield { type: 'done' as const, usage: { prompt: 10, completion: 5, total: 15 } };
+        },
+      }),
+    };
+
+    const orchestrator = new Orchestrator({
+      provider: delayedProvider,
+      timeout: { generateTimeoutMs: 20, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+    expect(
+      (errorChunks[0] as { type: 'error'; error: TimeoutExceededError }).error,
+    ).toBeInstanceOf(TimeoutExceededError);
+  });
+
+  it('provider-level retry exhaustion in pre-stream phase yields MaxRetriesExceededError', async () => {
+    vi.useRealTimers(); // Retry uses sleep()
+
+    const retryProvider = new MockProvider('retry-test');
+    retryProvider
+      .failureOnCall(1, new ProviderUnavailableError('Service unavailable'))
+      .failureOnCall(2, new ProviderUnavailableError('Service unavailable'));
+
+    const orchestrator = new Orchestrator({
+      provider: retryProvider,
+      retry: { maxAttempts: 2, baseDelayMs: 1, jitter: false },
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    // Should be exactly one error chunk (no done chunk)
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+
+    const err = (errorChunks[0] as { type: 'error'; error: MaxRetriesExceededError }).error;
+    expect(err).toBeInstanceOf(MaxRetriesExceededError);
+    expect(err.attempts).toBe(2); // maxAttempts reached after 2 attempts
+
+    // Provider was called twice: initial + 1 retry
+    expect(retryProvider.callCount()).toBe(2);
+  });
+
+  it('non-retryable provider error in streaming pre-stream yields error chunk immediately', async () => {
+    const authProvider = new MockProvider('auth-test');
+    // ProviderAuthError is non-retryable (retryable: false)
+    authProvider.failureOnCall(1, new ProviderAuthError('Authentication failed'));
+
+    const orchestrator = new Orchestrator({
+      provider: authProvider,
+      retry: { maxAttempts: 3, baseDelayMs: 1, jitter: false },
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+
+    expect(
+      (errorChunks[0] as { type: 'error'; error: ProviderAuthError }).error,
+    ).toBeInstanceOf(ProviderAuthError);
+
+    // Only 1 call — no retry attempted for non-retryable errors
+    expect(authProvider.callCount()).toBe(1);
+  });
 });
