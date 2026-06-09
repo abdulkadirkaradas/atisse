@@ -1119,4 +1119,60 @@ describe('Integration: Orchestrator Core Run', () => {
       expect(provider.wasCalledTimes(1)).toBe(true);
     });
   });
+
+  describe('Generation events', () => {
+    it('emits generate.started and generate.completed events', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response' });
+
+      const orchestrator = new Orchestrator({ provider });
+
+      const startedEvents: Array<{ type: string; messageCount?: number; runId?: string }> = [];
+      const completedEvents: Array<{ type: string; finishReason?: string; runId?: string }> = [];
+      const unsub1 = orchestrator.on('generate.started', (e) => startedEvents.push(e));
+      const unsub2 = orchestrator.on('generate.completed', (e) => completedEvents.push(e));
+
+      await orchestrator.run({ prompt: 'test' });
+      unsub1();
+      unsub2();
+
+      expect(startedEvents).toHaveLength(1);
+      expect(startedEvents[0]!.runId).toBeDefined();
+      expect(startedEvents[0]!.messageCount).toBe(1);
+      expect(completedEvents).toHaveLength(1);
+      expect(completedEvents[0]!.runId).toBeDefined();
+      expect(completedEvents[0]!.finishReason).toBe('stop');
+    });
+  });
+
+  describe('Tool hooks', () => {
+    it('executes beforeTool and afterTool hooks during tool execution', async () => {
+      const provider = createProvider();
+      provider
+        .enqueue({
+          text: '',
+          toolCalls: [{ id: 'call-1', name: 'echo', input: { value: 'test' } }],
+          finishReason: 'tool_calls',
+        })
+        .enqueue({ text: 'Final response' });
+
+      const beforeToolHook = vi.fn(async (ctx: ToolContext) => ctx);
+      const afterToolHook = vi.fn(async (ctx: AfterToolContext) => ctx);
+
+      const orchestrator = new Orchestrator({
+        provider,
+        tools: [echoTool],
+        hooks: { beforeTool: [beforeToolHook], afterTool: [afterToolHook] },
+      });
+
+      await orchestrator.run({ prompt: 'test' });
+
+      expect(beforeToolHook).toHaveBeenCalledTimes(1);
+      expect(afterToolHook).toHaveBeenCalledTimes(1);
+      // Verify beforeTool was called before afterTool
+      expect(beforeToolHook.mock.invocationCallOrder[0] as number).toBeLessThan(
+        afterToolHook.mock.invocationCallOrder[0] as number,
+      );
+    });
+  });
 });
