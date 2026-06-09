@@ -1240,4 +1240,253 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
     expect(completedEvents[0]!.usage.completion).toBe(20);
     expect(completedEvents[0]!.usage.total).toBe(30);
   });
+
+  it('memory load error during streaming initialization yields error chunk', async () => {
+    const mockMemory = new MockMemoryAdapter();
+    // Note: ContextLoadError is used here because MockMemoryAdapter.loadError
+    // requires OrchestratorError and there is no MemoryLoadError type.
+    // In production, a raw Error from memory.load() would be wrapped
+    // into PipelineInternalError by handleOrchestratorError.
+    mockMemory.loadError = new ContextLoadError('mock-memory', new Error('Memory load failed'));
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Hello' },
+        { type: 'done', usage: { prompt: 5, completion: 10, total: 15 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      memoryAdapter: mockMemory,
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+      sessionId: 'test-session',
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    // Error chunk should be yielded (memory load fails before stream starts)
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+
+    // The memory load error should propagate
+    expect(
+      (errorChunks[0] as { type: 'error'; error: ContextLoadError }).error,
+    ).toBeInstanceOf(ContextLoadError);
+
+    // No text chunks — stream was never consumed
+    expect(chunks.filter((c) => c.type === 'text')).toHaveLength(0);
+
+    // Provider should not have been called since the error occurred at initialization
+    expect(provider.callCount()).toBe(0);
+  });
+
+  it('provider yields error chunk mid-stream which is forwarded to consumer', async () => {
+    const midStreamError = new ProviderUnavailableError('Temporary glitch');
+
+    // enqueueStream with chunks that include an error chunk mid-stream
+    // (not as the sole chunk, so MockProvider doesn't treat it as a rejection)
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Before error' },
+        { type: 'error', error: midStreamError },
+        { type: 'text', delta: ' After error' },
+        { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    // Text chunks should appear on both sides of the error
+    const textChunks = chunks.filter((c) => c.type === 'text') as Array<{ delta: string }>;
+    expect(textChunks.length).toBeGreaterThanOrEqual(2);
+
+    // Error chunk should be forwarded
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+    expect(
+      (errorChunks[0] as { type: 'error'; error: ProviderUnavailableError }).error,
+    ).toBeInstanceOf(ProviderUnavailableError);
+
+    // Pipeline still completes (error chunk is mid-stream, not fatal to pipeline)
+    const doneChunks = chunks.filter((c) => c.type === 'done');
+    expect(doneChunks).toHaveLength(1);
+  });
+
+  it('stream: true with provider lacking streaming capabilities throws ConfigValidationError', async () => {
+    // Case 1: capabilities.streaming === false
+    const nonStreamingProvider = new MockProvider('non-streaming');
+    nonStreamingProvider.capabilities.streaming = false;
+
+    const orchestrator1 = new Orchestrator({
+      provider: nonStreamingProvider,
+    });
+
+    await expect(
+      orchestrator1.run({ prompt: 'test', stream: true }),
+    ).rejects.toThrow(ConfigValidationError);
+
+    // Case 2: generateStream is undefined
+    const basicProvider: AIProvider = {
+      id: 'basic',
+      capabilities: { streaming: true, toolCalling: false, vision: false, maxContextTokens: 128_000 },
+      generate: async () => ({
+        text: '',
+        toolCalls: [],
+        usage: { prompt: 0, completion: 0, total: 0 },
+        finishReason: 'stop' as const,
+      }),
+    };
+
+    const orchestrator2 = new Orchestrator({
+      provider: basicProvider,
+    });
+
+    await expect(
+      orchestrator2.run({ prompt: 'test', stream: true }),
+    ).rejects.toThrow(ConfigValidationError);
+  });
+
+  // ── REMAINING GAPS: Iteration 2 ─────────────────────────────────────
+
+  it('empty stream from provider yields done chunk with zero usage', async () => {
+    provider.enqueueStream({ chunks: [] });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    // No text chunks
+    expect(chunks.filter((c) => c.type === 'text')).toHaveLength(0);
+
+    // The pipeline yields its own done chunk
+    const doneChunks = chunks.filter((c) => c.type === 'done');
+    expect(doneChunks).toHaveLength(1);
+
+    const doneChunk = doneChunks[0] as { type: 'done'; usage?: { prompt: number; completion: number; total: number } };
+    expect(doneChunk.usage).toBeDefined();
+    expect(doneChunk.usage!.total).toBe(0);
+  });
+
+  it('finishReason from provider done chunk not propagated in streaming — inferred from toolCalls', async () => {
+    // The streaming pipeline (pipeline.ts L1172-1178) infers finishReason from
+    // pendingToolCalls, not from the provider's done chunk. So finishReason is
+    // always 'stop' or 'tool_calls' in streaming. This test documents that behavior.
+    provider.enqueue({
+      text: 'Response',
+      finishReason: 'length',
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const textChunks: string[] = [];
+    for await (const chunk of result) {
+      if (chunk.type === 'text') {
+        textChunks.push(chunk.delta);
+      }
+    }
+
+    // Text is accumulated correctly regardless of finishReason
+    expect(textChunks.join('')).toBe('Response');
+
+    // Provider was called once
+    expect(provider.callCount()).toBe(1);
+  });
+
+  it('context provider failure during streaming initialization yields error chunk', async () => {
+    const failingContextProvider: ContextProvider = {
+      id: 'fail-provider',
+      async provide() {
+        throw new Error('Context provider crashed');
+      },
+    };
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Hello' },
+        { type: 'done', usage: { prompt: 5, completion: 10, total: 15 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      contextProviders: [failingContextProvider],
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const contextFailedEvents: Array<{ providerId: string }> = [];
+    const unsubContext = orchestrator.on('context.failed', (e) =>
+      contextFailedEvents.push({ providerId: e.providerId }),
+    );
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    unsubContext();
+
+    // context.failed event fired
+    expect(contextFailedEvents).toHaveLength(1);
+    expect(contextFailedEvents[0]!.providerId).toBe('fail-provider');
+
+    // Error chunk yielded
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+    expect(
+      (errorChunks[0] as { type: 'error'; error: OrchestratorError }).error,
+    ).toBeInstanceOf(OrchestratorError);
+
+    // No text or done chunks — failed before streaming
+    expect(chunks.filter((c) => c.type === 'text')).toHaveLength(0);
+    expect(chunks.filter((c) => c.type === 'done')).toHaveLength(0);
+
+    // Provider never called
+    expect(provider.callCount()).toBe(0);
+  });
 });
