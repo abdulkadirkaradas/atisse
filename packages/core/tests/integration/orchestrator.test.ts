@@ -1,24 +1,44 @@
-import { describe, it, expect, vi } from 'vitest';
-import type { AIProvider, OrchestratorConfig, Tool } from '../../src/interfaces.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import type {
+  AIProvider,
+  OrchestratorConfig,
+  Tool,
+  ContextProvider,
+  ToolContext,
+  AfterToolContext,
+  PromptRequest,
+  PromptResponse,
+} from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import {
   ProviderRateLimitError,
   ProviderAuthError,
   ProviderUnavailableError,
+  ProviderTimeoutError,
+  ProviderMalformedResponse,
   MaxRetriesExceededError,
   FallbackExhaustedError,
   ConfigValidationError,
   ToolValidationError,
+  ToolNotFoundError,
+  ContextLoadError,
   MemorySaveError,
+  RunCancelledError,
+  TimeoutExceededError,
+  PipelineInternalError,
+  MaxToolRoundsExceededError,
 } from '../../src/errors.js';
-import { failingTool, validationFailTool } from '../fixtures/mock-tools.js';
+import { failingTool, validationFailTool, echoTool } from '../fixtures/mock-tools.js';
 import { MockMemoryAdapter } from '../fixtures/mock-memory.js';
 
 // Helper to create a fresh provider
 const createProvider = () => new MockProvider('test-provider');
 
 describe('Integration: Orchestrator Core Run', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   describe('Simple run scenarios', () => {
     it('returns text when provider returns text', async () => {
       const provider = createProvider();
