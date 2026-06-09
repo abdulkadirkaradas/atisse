@@ -34,7 +34,7 @@ describe('MockProvider', () => {
     });
 
     it('throws ProviderUnavailableError when queue empty', async () => {
-      expect(() => provider.generate({ messages: [] })).toThrow(ProviderUnavailableError);
+      await expect(provider.generate({ messages: [] })).rejects.toThrow(ProviderUnavailableError);
     });
 
     it('throws enqueued OrchestratorError directly', async () => {
@@ -121,7 +121,7 @@ describe('MockProvider', () => {
 
       expect(provider.callCount()).toBe(0);
       expect(provider.calls()).toEqual([]);
-      expect(() => provider.generate({ messages: [] })).toThrow(ProviderUnavailableError);
+      await expect(provider.generate({ messages: [] })).rejects.toThrow(ProviderUnavailableError);
     });
   });
 
