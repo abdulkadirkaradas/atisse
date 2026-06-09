@@ -854,4 +854,70 @@ describe('Integration: Orchestrator Core Run', () => {
       expect(provider.wasCalledTimes(1)).toBe(true);
     });
   });
+
+  describe('AbortSignal cancellation', () => {
+    it('throws RunCancelledError when AbortSignal is already aborted', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Should not be called' });
+
+      const orchestrator = new Orchestrator({ provider });
+      const signal = AbortSignal.abort();
+
+      await expect(orchestrator.run({ prompt: 'test', signal })).rejects.toThrow(RunCancelledError);
+      expect(provider.wasCalledTimes(0)).toBe(true);
+    });
+
+    it('throws RunCancelledError when signal aborts during run', async () => {
+      let callCount = 0;
+      let providerCallResolve: () => void;
+      const providerCalled = new Promise<void>((resolve) => {
+        providerCallResolve = resolve;
+      });
+
+      const abortAwareProvider: AIProvider = {
+        id: 'abort-aware',
+        capabilities: {
+          streaming: false,
+          toolCalling: false,
+          vision: false,
+          maxContextTokens: 128_000,
+        },
+        async generate(request: PromptRequest) {
+          callCount++;
+          providerCallResolve();
+          if (request.signal?.aborted) {
+            throw new RunCancelledError();
+          }
+          // Wait for abort signal while generating
+          await new Promise<PromptResponse>((_resolve, reject) => {
+            const onAbort = () => reject(new RunCancelledError());
+            request.signal?.addEventListener('abort', onAbort, { once: true });
+          });
+          // Unreachable
+          return {
+            text: '',
+            toolCalls: [],
+            usage: { prompt: 0, completion: 0, total: 0 },
+            finishReason: 'stop',
+          };
+        },
+      };
+
+      const controller = new AbortController();
+      const orchestrator = new Orchestrator({ provider: abortAwareProvider });
+
+      const runPromise = orchestrator.run({ prompt: 'test', signal: controller.signal });
+
+      // Wait for the pipeline to reach provider.generate()
+      await providerCalled;
+
+      // Verify provider was called exactly once before abort
+      expect(callCount).toBe(1);
+
+      // Abort mid-execution
+      controller.abort();
+
+      await expect(runPromise).rejects.toThrow(RunCancelledError);
+    });
+  });
 });
