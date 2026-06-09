@@ -1325,4 +1325,303 @@ describe('Integration: Orchestrator Core Run', () => {
       vi.useRealTimers();
     });
   });
+
+  describe('Profile override merging', () => {
+    it('overrides systemPrompt from profile', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Profile response' });
+
+      const orchestrator = new Orchestrator({
+        provider,
+        systemPrompt: 'Base system prompt',
+        profiles: {
+          custom: {
+            name: 'custom',
+            systemPrompt: 'Custom system prompt',
+          },
+        },
+      });
+
+      await orchestrator.run({ prompt: 'test', profile: 'custom' });
+
+      const lastRequest = provider.lastRequest();
+      expect(
+        lastRequest?.messages.some(
+          (m) => m.role === 'system' && m.content === 'Custom system prompt',
+        ),
+      ).toBe(true);
+    });
+
+    it('overrides provider from profile', async () => {
+      const baseProvider = createProvider();
+      baseProvider.enqueue({ text: 'Should not be called' });
+
+      const profileProvider = new MockProvider('profile-test');
+      profileProvider.enqueue({ text: 'From profile provider' });
+
+      const orchestrator = new Orchestrator({
+        provider: baseProvider,
+        profiles: {
+          custom: {
+            name: 'custom',
+            provider: profileProvider,
+          },
+        },
+      });
+
+      const result = await orchestrator.run({ prompt: 'test', profile: 'custom' });
+      expect(result.text).toBe('From profile provider');
+    });
+
+    it('uses base provider when no profile is specified', async () => {
+      const baseProvider = createProvider();
+      baseProvider.enqueue({ text: 'Base response' });
+
+      const profileProvider = new MockProvider('profile-test');
+
+      const orchestrator = new Orchestrator({
+        provider: baseProvider,
+        profiles: {
+          custom: {
+            name: 'custom',
+            provider: profileProvider,
+          },
+        },
+      });
+
+      const result = await orchestrator.run({ prompt: 'test' });
+      expect(result.text).toBe('Base response');
+    });
+
+    it('tools override replaces base tools completely', async () => {
+      const provider = createProvider();
+      provider
+        .enqueue({
+          text: '',
+          toolCalls: [{ id: 'call-1', name: 'profile-tool', input: { input: 'test' } }],
+          finishReason: 'tool_calls',
+        })
+        .enqueue({ text: 'Success with profile tool' });
+
+      const baseTool: Tool = {
+        name: 'base-tool',
+        description: 'Base only tool',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        },
+        async execute() {
+          return {};
+        },
+      };
+
+      const profileTool: Tool = {
+        name: 'profile-tool',
+        description: 'Profile only tool',
+        inputSchema: {
+          type: 'object',
+          properties: { input: { type: 'string' } },
+          required: ['input'],
+          additionalProperties: false,
+        },
+        async execute(input) {
+          return input;
+        },
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        tools: [baseTool],
+        profiles: {
+          custom: {
+            name: 'custom',
+            tools: [profileTool],
+          },
+        },
+        retry: { maxAttempts: 1, baseDelayMs: 10, jitter: false },
+        timeout: { totalTimeoutMs: 60_000 },
+      });
+
+      vi.useFakeTimers();
+      const resultPromise = orchestrator.run({ prompt: 'test', profile: 'custom' });
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
+      expect(result.text).toBe('Success with profile tool');
+
+      // Verify full replacement: profile tool present, base tool absent
+      const lastRequest = provider.lastRequest();
+      expect(lastRequest?.tools?.some((t) => t.name === 'profile-tool')).toBe(true);
+      expect(lastRequest?.tools?.some((t) => t.name === 'base-tool')).toBe(false);
+
+      vi.useRealTimers();
+    });
+
+    it('contextProviders override replaces base contextProviders completely', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response' });
+
+      const baseCtxProvider: ContextProvider = {
+        id: 'base-ctx',
+        async provide() {
+          return [{ role: 'system', content: 'Base context' }];
+        },
+      };
+
+      const profileCtxProvider: ContextProvider = {
+        id: 'profile-ctx',
+        async provide() {
+          return [{ role: 'system', content: 'Profile context' }];
+        },
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [baseCtxProvider],
+        profiles: {
+          custom: {
+            name: 'custom',
+            contextProviders: [profileCtxProvider],
+          },
+        },
+      });
+
+      await orchestrator.run({ prompt: 'test', profile: 'custom' });
+      const lastRequest = provider.lastRequest();
+      expect(lastRequest?.messages.some((m) => m.content === 'Profile context')).toBe(true);
+      expect(lastRequest?.messages.some((m) => m.content === 'Base context')).toBe(false);
+    });
+
+    it('retry deep merge applies profile overrides on top of defaults', async () => {
+      const provider = createProvider();
+      provider
+        .enqueue({ error: new ProviderRateLimitError('429', 50) })
+        .enqueue({ error: new ProviderRateLimitError('429', 50) })
+        .enqueue({ error: new ProviderRateLimitError('429', 50) });
+
+      const orchestrator = new Orchestrator({
+        provider,
+        profiles: {
+          custom: {
+            name: 'custom',
+            retry: { baseDelayMs: 10, jitter: false },
+          },
+        },
+        timeout: { totalTimeoutMs: 60_000 },
+      });
+
+      vi.useFakeTimers();
+      const runPromise = orchestrator.run({ prompt: 'test', profile: 'custom' });
+      // Suppress unhandled rejection from the retry rejection
+      runPromise.catch(() => {});
+      await vi.runAllTimersAsync();
+      // maxAttempts: 3 preserved from defaults — all 3 retries exhausted
+      await expect(runPromise).rejects.toThrow(MaxRetriesExceededError);
+      expect(provider.wasCalledTimes(3)).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it('timeout deep merge applies profile overrides on top of defaults', async () => {
+      // Provider that never resolves — ensures timeout fires via totalTimeoutMs
+      const stuckProvider: AIProvider = {
+        id: 'stuck',
+        capabilities: {
+          streaming: false,
+          toolCalling: false,
+          vision: false,
+          maxContextTokens: 128_000,
+        },
+        async generate() {
+          await new Promise(() => {}); // Never resolves
+          return {
+            text: '',
+            toolCalls: [],
+            usage: { prompt: 0, completion: 0, total: 0 },
+            finishReason: 'stop',
+          };
+        },
+      };
+
+      vi.useFakeTimers();
+      const orchestrator = new Orchestrator({
+        provider: stuckProvider,
+        profiles: {
+          custom: {
+            name: 'custom',
+            timeout: { totalTimeoutMs: 50 }, // Override default 60s to 50ms
+          },
+        },
+      });
+
+      const runPromise = orchestrator.run({ prompt: 'test', profile: 'custom' });
+      // Suppress unhandled rejection from the hanging pipeline promise
+      runPromise.catch(() => {});
+      await vi.advanceTimersByTimeAsync(60);
+      // 50ms profile timeout fires instead of default 60s — proves override took effect
+      await expect(runPromise).rejects.toThrow(TimeoutExceededError);
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    });
+
+    it('toolPolicy deep merge applies profile overrides on top of defaults', async () => {
+      const provider = createProvider();
+      provider
+        .enqueue({
+          text: '',
+          toolCalls: [{ id: 'call-1', name: 'echo', input: { value: '1' } }],
+          finishReason: 'tool_calls',
+        })
+        .enqueue({
+          text: '',
+          toolCalls: [{ id: 'call-2', name: 'echo', input: { value: '2' } }],
+          finishReason: 'tool_calls',
+        })
+        .enqueue({ text: 'Should not be reached' });
+
+      const orchestrator = new Orchestrator({
+        provider,
+        tools: [echoTool],
+        profiles: {
+          custom: {
+            name: 'custom',
+            toolPolicy: { maxToolRounds: 1 },
+          },
+        },
+      });
+
+      await expect(orchestrator.run({ prompt: 'test', profile: 'custom' })).rejects.toThrow(
+        MaxToolRoundsExceededError,
+      );
+      expect(provider.wasCalledTimes(2)).toBe(true); // First generate + first tool round
+    });
+
+    it('hooks concatenation merges base and profile hooks in order', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response' });
+
+      const baseBeforeRun = vi.fn(async (ctx) => ctx);
+      const profileBeforeRun = vi.fn(async (ctx) => ctx);
+
+      const orchestrator = new Orchestrator({
+        provider,
+        hooks: { beforeRun: [baseBeforeRun] },
+        profiles: {
+          custom: {
+            name: 'custom',
+            hooks: { beforeRun: [profileBeforeRun] },
+          },
+        },
+      });
+
+      await orchestrator.run({ prompt: 'test', profile: 'custom' });
+
+      expect(baseBeforeRun).toHaveBeenCalledTimes(1);
+      expect(profileBeforeRun).toHaveBeenCalledTimes(1);
+      // Base hooks execute first, then profile hooks
+      expect(baseBeforeRun.mock.invocationCallOrder[0] as number).toBeLessThan(
+        profileBeforeRun.mock.invocationCallOrder[0] as number,
+      );
+    });
+  });
 });
