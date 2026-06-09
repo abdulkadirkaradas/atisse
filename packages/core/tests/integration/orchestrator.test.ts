@@ -1012,4 +1012,74 @@ describe('Integration: Orchestrator Core Run', () => {
       ).toThrow(ConfigValidationError);
     });
   });
+
+  describe('Profile existence validation', () => {
+    it('throws ConfigValidationError when profile is not found at run()', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response' });
+
+      const orchestrator = new Orchestrator({ provider });
+
+      await expect(orchestrator.run({ prompt: 'test', profile: 'nonexistent' })).rejects.toThrow(
+        ConfigValidationError,
+      );
+      expect(provider.wasCalledTimes(0)).toBe(true);
+    });
+  });
+
+  describe('Context provider errors', () => {
+    it('throws ContextLoadError when context provider provide() throws', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Should not be called' });
+
+      const failingContextProvider: ContextProvider = {
+        id: 'failing-provider',
+        async provide() {
+          throw new Error('Context retrieval failed');
+        },
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [failingContextProvider],
+      });
+
+      await expect(orchestrator.run({ prompt: 'test' })).rejects.toThrow(ContextLoadError);
+      expect(provider.wasCalledTimes(0)).toBe(true);
+    });
+
+    it('emits context.failed event when context provider throws', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Should not be called' });
+
+      const failingContextProvider: ContextProvider = {
+        id: 'failing-provider',
+        async provide() {
+          throw new Error('Context retrieval failed');
+        },
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [failingContextProvider],
+      });
+
+      const events: Array<{ type: string; providerId?: string; runId?: string; error?: unknown }> =
+        [];
+      const unsub = orchestrator.on('context.failed', (e) => events.push(e));
+
+      await expect(orchestrator.run({ prompt: 'test' })).rejects.toThrow(ContextLoadError);
+      unsub();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]!.type).toBe('context.failed');
+      expect(events[0]!.runId).toBeDefined();
+      expect(events[0]!.providerId).toBe('failing-provider');
+      expect(events[0]!.error).toEqual({
+        code: 'CONTEXT_LOAD_FAILED',
+        message: expect.any(String),
+        retryable: true,
+      });
+    });
+  });
 });
