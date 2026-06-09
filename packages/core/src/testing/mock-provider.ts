@@ -49,6 +49,20 @@ export class MockProvider implements AIProvider {
     };
   }
 
+  /**
+   * Enqueue an entry for consumption by generate() or generateStream().
+   *
+   * Pushes the entry to **both** `queue` (for {@link generate}) and `streamQueue`
+   * (for {@link generateStream}). This means:
+   *
+   * 1. A {@link generate} call consumes from `queue`.
+   * 2. A {@link generateStream} call consumes from `streamQueue` first.
+   * 3. If `streamQueue` is empty, {@link generateStream} **falls back** to `queue`,
+   *    consuming the same logical entry a second time.
+   *
+   * This dual-queue fallback is intentional — it allows testing mixed
+   * generate/generateStream call sequences without manually managing both queues.
+   */
   enqueue(entry: MockProviderEntry): this {
     this.queue.push(entry);
     this.streamQueue.push(this._entryToStreamChunks(entry));
@@ -133,7 +147,7 @@ export class MockProvider implements AIProvider {
    * Check if a failure should be injected for the current call.
    */
   private _shouldInjectFailure(): OrchestratorError | undefined {
-    const nextCall = this._callCount + 1;
+    const nextCall = this._callCount;
     for (const config of this._failureInjections) {
       if (config.callIndex === nextCall) {
         return config.error;
@@ -153,13 +167,11 @@ export class MockProvider implements AIProvider {
     }
 
     if (this.queue.length === 0) {
-      throw new ProviderUnavailableError('MockProvider queue is empty');
+      return Promise.reject(new ProviderUnavailableError('MockProvider queue is empty'));
     }
 
-    const entry = this.queue.shift();
-    if (!entry) {
-      throw new ProviderUnavailableError('MockProvider queue is empty');
-    }
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const entry = this.queue.shift()!;
 
     if ('error' in entry) {
       return Promise.reject(entry.error);
@@ -227,11 +239,8 @@ export class MockProvider implements AIProvider {
       return Promise.reject(error);
     }
 
-    const entry = this.queue.shift();
-    if (!entry) {
-      const error = new ProviderUnavailableError('MockProvider queue is empty');
-      return Promise.reject(error);
-    }
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const entry = this.queue.shift()!;
 
     if ('error' in entry) {
       return Promise.reject(entry.error);

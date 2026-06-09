@@ -73,8 +73,8 @@ describe('Integration: Streaming Connection Errors (Edge Cases)', () => {
   });
 
   it('retry works for initial generateStream rejection', async () => {
-    // First attempt (index 2) fails with empty queue error
-    provider.failureOnCall(2, new ProviderUnavailableError('Connection refused'));
+    // First attempt fails
+    provider.failureOnCall(1, new ProviderUnavailableError('Connection refused'));
     // Second attempt succeeds
     provider.enqueueStream({
       chunks: [

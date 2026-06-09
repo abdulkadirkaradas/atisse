@@ -309,9 +309,7 @@ describe('Unit: Streaming Termination & Edge Cases', () => {
   describe('Pre-stream retry behavior', () => {
     it('retries on generateStream rejection and succeeds after retry (flag 1 + flag 24)', async () => {
       provider.reset();
-      // failureOnCall index: MockProvider uses _callCount + 1 after incrementing,
-      // so callIndex 2 targets first call, callIndex 3 targets second call, etc.
-      provider.failureOnCall(2, new ProviderRateLimitError('429', 50));
+      provider.failureOnCall(1, new ProviderRateLimitError('429', 50));
       provider.enqueueStream({
         chunks: [
           { type: 'text', delta: 'Success after retry' },

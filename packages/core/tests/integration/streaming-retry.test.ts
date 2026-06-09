@@ -11,9 +11,8 @@ describe('Integration: Streaming Retry (D-M3-1)', () => {
   });
 
   it('generateStream() rejection triggers retry and succeeds on 2nd attempt', async () => {
-    // Fail on first GENERATING call (callIndex 2 because _callCount increments before check)
-    // Then succeed on next call
-    provider.failureOnCall(2, new ProviderRateLimitError('429', 50));
+    // Fail on first generating call, then succeed on retry
+    provider.failureOnCall(1, new ProviderRateLimitError('429', 50));
     provider.enqueueStream({
       chunks: [
         { type: 'text', delta: 'H' },
@@ -48,10 +47,10 @@ describe('Integration: Streaming Retry (D-M3-1)', () => {
   });
 
   it('retries up to maxAttempts then yields MaxRetriesExceededError', async () => {
-    // Fail on calls 2 and 3 (first two generating failures)
+    // Fail on first two generating attempts
     provider
-      .failureOnCall(2, new ProviderRateLimitError('429', 50))
-      .failureOnCall(3, new ProviderRateLimitError('429', 50));
+      .failureOnCall(1, new ProviderRateLimitError('429', 50))
+      .failureOnCall(2, new ProviderRateLimitError('429', 50));
 
     const orchestrator = new Orchestrator({
       provider,
@@ -102,8 +101,8 @@ describe('Integration: Streaming Retry (D-M3-1)', () => {
   it('streaming retry correctly counts attempts', async () => {
     // Fail on first 2 attempts - this tests the attempt counter works
     provider
-      .failureOnCall(2, new ProviderRateLimitError('429', 50))
-      .failureOnCall(3, new ProviderRateLimitError('429', 50));
+      .failureOnCall(1, new ProviderRateLimitError('429', 50))
+      .failureOnCall(2, new ProviderRateLimitError('429', 50));
 
     const orchestrator = new Orchestrator({
       provider,

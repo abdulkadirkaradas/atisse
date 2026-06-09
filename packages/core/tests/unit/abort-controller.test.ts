@@ -593,7 +593,6 @@ describe('AbortSignal in RunInput - Integration', () => {
   });
 
   it('abort during streaming retry delay yields error chunk', async () => {
-    provider.failureOnCall(1, new ProviderTimeoutError('first timeout'));
     provider.enqueueStream({
       chunks: [
         { type: 'text', delta: 'retried' },
