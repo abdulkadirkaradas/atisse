@@ -1175,4 +1175,57 @@ describe('Integration: Orchestrator Core Run', () => {
       );
     });
   });
+
+  describe('Memory behavior', () => {
+    it('isolates memory between different sessions', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response 1' }).enqueue({ text: 'Response 2' });
+
+      const memory = new MockMemoryAdapter();
+
+      const orchestrator = new Orchestrator({ provider, memoryAdapter: memory });
+
+      await orchestrator.run({ prompt: 'Hello from A', sessionId: 'session-a' });
+      await orchestrator.run({ prompt: 'Hello from B', sessionId: 'session-b' });
+
+      const sessionA = await memory.load('session-a');
+      const sessionB = await memory.load('session-b');
+
+      // Each session should only have its own messages
+      expect(sessionA).toHaveLength(2);
+      expect(sessionA[0]!.content).toBe('Hello from A');
+      expect(sessionB).toHaveLength(2);
+      expect(sessionB[0]!.content).toBe('Hello from B');
+    });
+
+    it('accumulates memory across multiple run() calls with same sessionId', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'First' }).enqueue({ text: 'Second' });
+
+      const memory = new MockMemoryAdapter();
+
+      const orchestrator = new Orchestrator({ provider, memoryAdapter: memory });
+
+      await orchestrator.run({ prompt: 'Run 1', sessionId: 'session-acc' });
+      await orchestrator.run({ prompt: 'Run 2', sessionId: 'session-acc' });
+
+      const saved = await memory.load('session-acc');
+      // 2 messages per run (user + assistant) x 2 runs = 4 total
+      expect(saved).toHaveLength(4);
+      expect(saved[0]!.content).toBe('Run 1');
+      expect(saved[2]!.content).toBe('Run 2');
+    });
+
+    it('handles memoryBudget ≤ 0 gracefully (no memory truncation)', async () => {
+      const provider = createProvider();
+      provider.capabilities.maxContextTokens = 100; // Very low, making memoryBudget negative
+      provider.enqueue({ text: 'Success with low maxContextTokens' });
+
+      const orchestrator = new Orchestrator({ provider });
+      const result = await orchestrator.run({ prompt: 'test' });
+
+      expect(result.text).toBe('Success with low maxContextTokens');
+      expect(provider.wasCalledTimes(1)).toBe(true);
+    });
+  });
 });
