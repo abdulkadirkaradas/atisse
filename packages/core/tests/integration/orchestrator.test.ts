@@ -795,4 +795,48 @@ describe('Integration: Orchestrator Core Run', () => {
       expect(callCount).toBe(3);
     });
   });
+
+  describe('Provider retryable error handling', () => {
+    it('retries on ProviderTimeoutError and succeeds', async () => {
+      const provider = createProvider();
+      provider
+        .enqueue({ error: new ProviderTimeoutError('timeout') })
+        .enqueue({ text: 'Success after timeout' });
+
+      const orchestrator = new Orchestrator({
+        provider,
+        retry: { maxAttempts: 2, baseDelayMs: 10, jitter: false },
+        timeout: { totalTimeoutMs: 60_000 },
+      });
+
+      vi.useFakeTimers();
+      const resultPromise = orchestrator.run({ prompt: 'test' });
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
+      expect(result.text).toBe('Success after timeout');
+      expect(provider.wasCalledTimes(2)).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it('retries on ProviderUnavailableError and succeeds', async () => {
+      const provider = createProvider();
+      provider
+        .enqueue({ error: new ProviderUnavailableError('Down for maintenance') })
+        .enqueue({ text: 'Success after recovery' });
+
+      const orchestrator = new Orchestrator({
+        provider,
+        retry: { maxAttempts: 2, baseDelayMs: 10, jitter: false },
+        timeout: { totalTimeoutMs: 60_000 },
+      });
+
+      vi.useFakeTimers();
+      const resultPromise = orchestrator.run({ prompt: 'test' });
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
+      expect(result.text).toBe('Success after recovery');
+      expect(provider.wasCalledTimes(2)).toBe(true);
+      vi.useRealTimers();
+    });
+  });
 });
