@@ -5,10 +5,27 @@ import type {
   BeforeGenerateContext,
   TokenUsage,
   AfterGenerateContext,
+  AIProvider,
+  ToolContext,
+  AfterToolContext,
+  ContextProvider,
 } from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
-import { MemorySaveError, MaxToolRoundsExceededError, OrchestratorError } from '../../src/errors.js';
+import {
+  MemorySaveError,
+  MaxToolRoundsExceededError,
+  OrchestratorError,
+  TimeoutExceededError,
+  MaxRetriesExceededError,
+  ProviderUnavailableError,
+  ProviderAuthError,
+  ToolNotFoundError,
+  RunCancelledError,
+  ConfigValidationError,
+  ContextLoadError,
+  ToolExecutionError,
+} from '../../src/errors.js';
 import { MockMemoryAdapter } from '../fixtures/mock-memory.js';
 
 describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
