@@ -1116,4 +1116,128 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
 
     expect(provider.callCount()).toBe(2);
   });
+
+  it('AbortSignal cancellation during streaming yields RunCancelledError', async () => {
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Part 1' },
+        { type: 'text', delta: ' Part 2' },
+        { type: 'done', usage: { prompt: 5, completion: 10, total: 15 } },
+      ],
+    });
+
+    const controller = new AbortController();
+
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+      signal: controller.signal,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+      // Abort after the first text chunk is received
+      if (chunk.type === 'text' && chunks.filter((c) => c.type === 'text').length === 1) {
+        controller.abort();
+      }
+    }
+
+    // Should have received text before the abort
+    expect(chunks.some((c) => c.type === 'text')).toBe(true);
+
+    // Should have an error chunk with RunCancelledError
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+    expect(
+      (errorChunks[0] as { type: 'error'; error: RunCancelledError }).error,
+    ).toBeInstanceOf(RunCancelledError);
+
+    // No done chunk — pipeline was cancelled before finalizing
+    const doneChunks = chunks.filter((c) => c.type === 'done');
+    expect(doneChunks).toHaveLength(0);
+  });
+
+  // ── MEDIUM PRIORITY: Coverage gap tests ───────────────────────────────
+
+  it('run.failed event emitted on streaming error', async () => {
+    const failProvider = new MockProvider('fail-event-test');
+    failProvider.failureOnCall(1, new ProviderAuthError('Auth failed'));
+
+    const orchestrator = new Orchestrator({
+      provider: failProvider,
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const failedEvents: Array<{ runId: string; error: OrchestratorError }> = [];
+    const unsub = orchestrator.on('run.failed', (e) => failedEvents.push(e));
+
+    const completedEvents: Array<unknown> = [];
+    const unsubCompleted = orchestrator.on('run.completed', (e) => completedEvents.push(e));
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    for await (const _chunk of result) {
+      void _chunk;
+    }
+
+    unsub();
+    unsubCompleted();
+
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0]!.runId).toBeDefined();
+    expect(failedEvents[0]!.error).toBeInstanceOf(ProviderAuthError);
+    expect(failedEvents[0]!.error.retryable).toBe(false);
+
+    // run.completed must NOT fire on error path
+    expect(completedEvents).toHaveLength(0);
+  });
+
+  it('run.completed event emitted after successful streaming', async () => {
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Hello' },
+        { type: 'done', usage: { prompt: 10, completion: 20, total: 30 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const completedEvents: Array<{
+      runId: string;
+      durationMs: number;
+      usage: TokenUsage;
+    }> = [];
+    const unsub = orchestrator.on('run.completed', (e) => completedEvents.push(e));
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    for await (const _chunk of result) {
+      void _chunk;
+    }
+
+    unsub();
+
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0]!.runId).toBeDefined();
+    expect(completedEvents[0]!.durationMs).toBeGreaterThanOrEqual(0);
+    expect(completedEvents[0]!.usage).toBeDefined();
+    expect(completedEvents[0]!.usage.prompt).toBe(10);
+    expect(completedEvents[0]!.usage.completion).toBe(20);
+    expect(completedEvents[0]!.usage.total).toBe(30);
+  });
 });
