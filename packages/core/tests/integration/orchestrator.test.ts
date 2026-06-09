@@ -920,4 +920,96 @@ describe('Integration: Orchestrator Core Run', () => {
       await expect(runPromise).rejects.toThrow(RunCancelledError);
     });
   });
+
+  describe('Constructor timeout validation', () => {
+    it('generateTimeoutMs: 0 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { generateTimeoutMs: 0 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('generateTimeoutMs: -1 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { generateTimeoutMs: -1 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('generateTimeoutMs: Infinity throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { generateTimeoutMs: Infinity },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('toolTimeoutMs: 0 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { toolTimeoutMs: 0 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('toolTimeoutMs: -1 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { toolTimeoutMs: -1 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('toolTimeoutMs: Infinity throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { toolTimeoutMs: Infinity },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('totalTimeoutMs: 0 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { totalTimeoutMs: 0 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('totalTimeoutMs: -1 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { totalTimeoutMs: -1 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('totalTimeoutMs: Infinity throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            timeout: { totalTimeoutMs: Infinity },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+  });
 });
