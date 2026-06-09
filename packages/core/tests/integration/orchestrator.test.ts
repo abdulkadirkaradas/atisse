@@ -1228,4 +1228,101 @@ describe('Integration: Orchestrator Core Run', () => {
       expect(provider.wasCalledTimes(1)).toBe(true);
     });
   });
+
+  describe('Finish reason handling', () => {
+    it('finishReason length exits generation loop without further provider calls', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Truncated output', finishReason: 'length' });
+      // No additional entries — if provider is called again, MockProvider throws ProviderUnavailableError
+
+      const orchestrator = new Orchestrator({ provider });
+
+      const result = await orchestrator.run({ prompt: 'test' });
+      expect(result.text).toBe('Truncated output');
+      expect(provider.wasCalledTimes(1)).toBe(true);
+    });
+  });
+
+  describe('Pipeline error wrapping', () => {
+    it('wraps plain Error as PipelineInternalError', async () => {
+      let callCount = 0;
+      const errorProvider: AIProvider = {
+        id: 'error-provider',
+        capabilities: {
+          streaming: false,
+          toolCalling: false,
+          vision: false,
+          maxContextTokens: 128_000,
+        },
+        async generate() {
+          callCount++;
+          throw new Error('boom');
+        },
+      };
+
+      const orchestrator = new Orchestrator({ provider: errorProvider });
+      await expect(orchestrator.run({ prompt: 'test' })).rejects.toThrow(PipelineInternalError);
+      expect(callCount).toBe(1);
+    });
+
+    it('wraps non-Error throw as TimeoutExceededError', async () => {
+      let callCount = 0;
+      const stringProvider: AIProvider = {
+        id: 'string-provider',
+        capabilities: {
+          streaming: false,
+          toolCalling: false,
+          vision: false,
+          maxContextTokens: 128_000,
+        },
+        async generate() {
+          callCount++;
+          throw 'string error';
+        },
+      };
+
+      const orchestrator = new Orchestrator({ provider: stringProvider });
+      await expect(orchestrator.run({ prompt: 'test' })).rejects.toThrow(TimeoutExceededError);
+      expect(callCount).toBe(1);
+    });
+  });
+
+  describe('TimeoutExceededError from totalTimeoutMs', () => {
+    it('throws TimeoutExceededError in non-streaming path with totalTimeoutMs', async () => {
+      // Provider that never resolves
+      const stuckProvider: AIProvider = {
+        id: 'stuck',
+        capabilities: {
+          streaming: false,
+          toolCalling: false,
+          vision: false,
+          maxContextTokens: 128_000,
+        },
+        async generate() {
+          await new Promise(() => {}); // Never resolves
+          return {
+            text: '',
+            toolCalls: [],
+            usage: { prompt: 0, completion: 0, total: 0 },
+            finishReason: 'stop',
+          };
+        },
+      };
+
+      vi.useFakeTimers();
+      const orchestrator = new Orchestrator({
+        provider: stuckProvider,
+        timeout: { totalTimeoutMs: 50 },
+      });
+
+      const runPromise = orchestrator.run({ prompt: 'test' });
+      // Suppress unhandled rejection from the hanging pipeline promise
+      // after withTimeout short-circuits with TimeoutExceededError
+      runPromise.catch(() => {});
+      await vi.advanceTimersByTimeAsync(60);
+      await expect(runPromise).rejects.toThrow(TimeoutExceededError);
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    });
+  });
 });
