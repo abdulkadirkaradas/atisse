@@ -787,4 +787,333 @@ describe('Integration: Streaming + Tool Calls (D-M3-4)', () => {
     // Only 1 call — no retry attempted for non-retryable errors
     expect(authProvider.callCount()).toBe(1);
   });
+
+  it('ToolNotFoundError during streaming tool execution yields error chunk with no retry', async () => {
+    // Stream yields tool_call for a tool that does not exist in the registry
+    provider.enqueueStream({
+      chunks: [
+        {
+          type: 'tool_call',
+          toolCall: { id: 'call-nonexistent', name: 'non-existent-tool', input: {} },
+        },
+        { type: 'done', usage: { prompt: 5, completion: 2, total: 7 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      tools: [echoTool],
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    // Should see the tool_call chunk forwarded
+    const toolCallChunks = chunks.filter((c) => c.type === 'tool_call');
+    expect(toolCallChunks).toHaveLength(1);
+
+    // Should see an error chunk with ToolNotFoundError
+    const errorChunks = chunks.filter((c) => c.type === 'error');
+    expect(errorChunks).toHaveLength(1);
+    expect(
+      (errorChunks[0] as { type: 'error'; error: ToolNotFoundError }).error,
+    ).toBeInstanceOf(ToolNotFoundError);
+
+    // Only 1 provider call — no retry on fail-fast tool errors
+    expect(provider.callCount()).toBe(1);
+  });
+
+  it('beforeTool and afterTool hooks fire during streaming tool execution', async () => {
+    provider.enqueueStream({
+      chunks: [
+        {
+          type: 'tool_call',
+          toolCall: { id: 'call-1', name: 'echo', input: { value: 'test' } },
+        },
+        { type: 'done', usage: { prompt: 5, completion: 2, total: 7 } },
+      ],
+    });
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Done' },
+        { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+      ],
+    });
+
+    const beforeToolHook = vi.fn(async (ctx: ToolContext) => {
+      return ctx;
+    });
+    const afterToolHook = vi.fn(async (ctx: AfterToolContext) => {
+      return ctx;
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      tools: [echoTool],
+      hooks: { beforeTool: [beforeToolHook], afterTool: [afterToolHook] },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    for await (const _chunk of result) {
+      void _chunk;
+    }
+
+    expect(beforeToolHook).toHaveBeenCalledTimes(1);
+    expect(afterToolHook).toHaveBeenCalledTimes(1);
+
+    // Verify hook context
+    if (beforeToolHook.mock.calls[0]?.[0]) {
+      expect(beforeToolHook.mock.calls[0][0].toolCall.name).toBe('echo');
+    }
+    if (afterToolHook.mock.calls[0]?.[0]) {
+      expect(afterToolHook.mock.calls[0][0].toolResult.name).toBe('echo');
+    }
+  });
+
+  it('streaming tool execution retry with exponential backoff yields chunks from both initial and retry streams', async () => {
+    vi.useRealTimers();
+
+    let hasFailed = false;
+    const retryTool: Tool = {
+      name: 'fail-once',
+      description: 'Fails once then succeeds',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      async execute() {
+        if (!hasFailed) {
+          hasFailed = true;
+          throw new ToolExecutionError('fail-once', new Error('First call fails'));
+        }
+        return { status: 'ok' };
+      },
+    };
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Initial ' },
+        {
+          type: 'tool_call',
+          toolCall: { id: 'call-1', name: 'fail-once', input: {} },
+        },
+        { type: 'done', usage: { prompt: 5, completion: 2, total: 7 } },
+      ],
+    });
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Retry success' },
+        { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      tools: [retryTool],
+      retry: { maxAttempts: 2, baseDelayMs: 1, jitter: false },
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const failedEventList: Array<{ toolName: string }> = [];
+    const unsub = orchestrator.on('tool.failed', (e) =>
+      failedEventList.push({ toolName: e.toolName }),
+    );
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunkTypes: string[] = [];
+    const textChunks: string[] = [];
+    for await (const chunk of result) {
+      chunkTypes.push(chunk.type);
+      if (chunk.type === 'text') {
+        textChunks.push(chunk.delta);
+      }
+    }
+
+    unsub();
+
+    // tool.failed fired once
+    expect(failedEventList).toHaveLength(1);
+    expect(failedEventList[0]!.toolName).toBe('fail-once');
+
+    // tool_call from initial stream
+    expect(chunkTypes).toContain('tool_call');
+
+    // text from retry stream
+    expect(textChunks.join('')).toContain('Retry success');
+
+    // Stream completed
+    expect(chunkTypes).toContain('done');
+
+    // No error chunk — tool retry succeeded via generation retry
+    expect(chunkTypes).not.toContain('error');
+
+    // Provider called twice: initial + retry
+    expect(provider.callCount()).toBe(2);
+  });
+
+  it('ToolExecutionError during streaming yields no tool_result chunk and retries generation', async () => {
+    vi.useRealTimers();
+
+    const errTool: Tool = {
+      name: 'failing-tool',
+      description: 'Always errors',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      async execute() {
+        throw new ToolExecutionError('failing-tool', new Error('Tool failed'));
+      },
+    };
+
+    provider.enqueueStream({
+      chunks: [
+        {
+          type: 'tool_call',
+          toolCall: { id: 'call-1', name: 'failing-tool', input: {} },
+        },
+        { type: 'done', usage: { prompt: 5, completion: 2, total: 7 } },
+      ],
+    });
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Recovered' },
+        { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      tools: [errTool],
+      retry: { maxAttempts: 2, baseDelayMs: 1, jitter: false },
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const failedEventsList: Array<{ toolName: string }> = [];
+    const unsubTool = orchestrator.on('tool.failed', (e) =>
+      failedEventsList.push({ toolName: e.toolName }),
+    );
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result) {
+      chunks.push(chunk);
+    }
+
+    unsubTool();
+
+    // tool.failed event fired
+    expect(failedEventsList).toHaveLength(1);
+    expect(failedEventsList[0]!.toolName).toBe('failing-tool');
+
+    // tool_result is NOT yielded — ToolExecutionError triggers generation retry,
+    // which calls generateStream again rather than yielding a tool_result chunk
+    const toolResultChunks = chunks.filter((c) => c.type === 'tool_result');
+    expect(toolResultChunks).toHaveLength(0);
+
+    // Retry stream text appears
+    const retryText = chunks.find(
+      (c): c is { type: 'text'; delta: string } => c.type === 'text' && c.delta === 'Recovered',
+    );
+    expect(retryText).toBeDefined();
+  });
+
+  it('multiple concurrent tool_call chunks in one stream round', async () => {
+    const capitalizeTool: Tool = {
+      name: 'capitalize',
+      description: 'Capitalizes input',
+      inputSchema: {
+        type: 'object',
+        properties: { value: { type: 'string' } },
+        required: ['value'],
+        additionalProperties: false,
+      },
+      async execute(input: unknown) {
+        const { value } = input as { value: string };
+        return { result: value.toUpperCase() };
+      },
+    };
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Processing ' },
+        {
+          type: 'tool_call',
+          toolCall: { id: 'call-1', name: 'echo', input: { value: 'hello' } },
+        },
+        {
+          type: 'tool_call',
+          toolCall: { id: 'call-2', name: 'capitalize', input: { value: 'world' } },
+        },
+        { type: 'done', usage: { prompt: 10, completion: 5, total: 15 } },
+      ],
+    });
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Done' },
+        { type: 'done', usage: { prompt: 20, completion: 10, total: 30 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      tools: [echoTool, capitalizeTool],
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'do both',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    const toolResults: Array<{ name: string; output?: unknown; error?: unknown }> = [];
+    for await (const chunk of result) {
+      if (chunk.type === 'tool_result') {
+        toolResults.push({
+          name: chunk.toolResult.name,
+          output: chunk.toolResult.output,
+          error: chunk.toolResult.error,
+        });
+      }
+    }
+
+    // Both tool results should be present
+    expect(toolResults).toHaveLength(2);
+
+    const echoResult = toolResults.find((r) => r.name === 'echo');
+    expect(echoResult).toBeDefined();
+    expect(echoResult!.output).toEqual({ value: 'hello' });
+
+    const capResult = toolResults.find((r) => r.name === 'capitalize');
+    expect(capResult).toBeDefined();
+    expect(capResult!.output).toEqual({ result: 'WORLD' });
+
+    expect(provider.callCount()).toBe(2);
+  });
 });
