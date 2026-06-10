@@ -99,6 +99,16 @@ export class Orchestrator {
       }
     }
 
+    // Validate retry.maxAttempts >= 1 and not Infinity
+    if (
+      config.retry?.maxAttempts !== undefined &&
+      (config.retry.maxAttempts < 1 || !isFinite(config.retry.maxAttempts))
+    ) {
+      validationErrors.push(
+        `retry.maxAttempts must be at least 1 and not Infinity — received: ${config.retry.maxAttempts}`,
+      );
+    }
+
     // Validate no duplicate tool names
     if (config.tools && config.tools.length > 0) {
       const toolNames = new Set<string>();
