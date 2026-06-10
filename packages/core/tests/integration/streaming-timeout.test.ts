@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { StreamChunk } from '../../src/interfaces.js';
+import type { StreamChunk, AIProvider } from '../../src/interfaces.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
-import { TimeoutExceededError } from '../../src/errors.js';
+import { TimeoutExceededError, RunCancelledError, PipelineInternalError } from '../../src/errors.js';
 
 describe('Integration: Streaming Timeout (D-M3-2)', () => {
   let provider: MockProvider;
