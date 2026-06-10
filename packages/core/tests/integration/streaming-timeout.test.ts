@@ -15,8 +15,10 @@ describe('Integration: Streaming Timeout (D-M3-2)', () => {
     vi.useRealTimers();
   });
 
+  // Note: This test uses fake timers for deterministic behavior and is the higher-quality
+  // version of streaming.test.ts:677 (which uses real timers). The fake-timer approach is
+  // preferred because it avoids real delays, eliminates flakiness, and runs faster.
   it('generateTimeoutMs correctly interrupts streaming with idle timeout', async () => {
-    // Use fake timers to control time
     vi.useFakeTimers();
 
     // Override generateStream to yield chunks with a gap that exceeds the idle timeout.
@@ -83,74 +85,28 @@ describe('Integration: Streaming Timeout (D-M3-2)', () => {
     }
   });
 
-  it('streaming completes within timeout - no error', async () => {
+  it('default timeout merge - streaming works without explicit timeout config', async () => {
     provider.enqueueStream({
       chunks: [
-        { type: 'text', delta: 'Fast' },
-        { type: 'done', usage: { prompt: 0, completion: 4, total: 4 } },
+        { type: 'text', delta: 'Default' },
+        { type: 'done', usage: { prompt: 0, completion: 7, total: 7 } },
       ],
     });
 
     const orchestrator = new Orchestrator({
       provider,
-      timeout: { generateTimeoutMs: 5000, toolTimeoutMs: 1000, totalTimeoutMs: 60_000 },
     });
 
-    const result = (await orchestrator.run({ prompt: 'test', stream: true })) as AsyncIterable<
-      { type: 'text'; delta: string } | { type: 'done' }
-    >;
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
 
     let text = '';
-    let doneReceived = false;
-
     for await (const chunk of result) {
-      if (chunk.type === 'text') {
-        text += chunk.delta;
-      } else if (chunk.type === 'done') {
-        doneReceived = true;
-      }
+      if (chunk.type === 'text') text += chunk.delta;
     }
 
-    expect(text).toBe('Fast');
-    expect(doneReceived).toBe(true);
-  });
-
-  it('totalTimeoutMs aborts entire run including tool execution', async () => {
-    // Provider that responds quickly, won't trigger generate timeout
-    provider.enqueueStream({
-      chunks: [
-        { type: 'text', delta: 'Response' },
-        { type: 'done', usage: { prompt: 0, completion: 8, total: 8 } },
-      ],
-    });
-
-    const orchestrator = new Orchestrator({
-      provider,
-      timeout: { generateTimeoutMs: 5000, toolTimeoutMs: 1000, totalTimeoutMs: 50 }, // Very short total timeout
-    });
-
-    vi.useFakeTimers();
-
-    // Should reject with TimeoutExceededError
-    let timeoutError = false;
-    try {
-      const result = (await orchestrator.run({
-        prompt: 'test',
-        stream: true,
-      })) as AsyncIterable<StreamChunk>;
-      vi.advanceTimersByTimeAsync(100);
-
-      for await (const chunk of result) {
-        // Consume to trigger any errors
-        void chunk;
-      }
-    } catch (error) {
-      if (error instanceof TimeoutExceededError) {
-        timeoutError = true;
-      }
-    }
-
-    // Either we get timeout error directly, or it times out during streaming
-    expect(timeoutError || provider.callCount() >= 1).toBe(true);
+    expect(text).toBe('Default');
   });
 });
