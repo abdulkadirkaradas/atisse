@@ -222,4 +222,58 @@ describe('Integration: Streaming Timeout (D-M3-2)', () => {
     expect(errorChunks.length).toBeGreaterThanOrEqual(1);
     expect(errorChunks[0]?.error).toBeInstanceOf(RunCancelledError);
   });
+
+  // ── G1: generateTimeoutMs <= 0 passthrough ────────────────────────────
+  // Profile-level timeout bypasses constructor validation (orchestrator.ts L84-99)
+  // which only validates config.timeout at the top level. The profile value of 0
+  // is merged via mergeTimeoutPolicy (policies.ts L46-54), overriding the default
+  // of 30000. At pipeline.ts L118, timeoutMs <= 0 triggers the passthrough path,
+  // meaning no per-chunk idle timeout is applied. This test verifies that the stream
+  // completes successfully despite inter-chunk delays that would exceed a normal timeout.
+
+  it('profile-level generateTimeoutMs:0 bypasses idle timeout via passthrough', async () => {
+    vi.useFakeTimers();
+
+    const orch = new Orchestrator({
+      provider,
+      profiles: {
+        no_idle: {
+          name: 'no_idle',
+          timeout: { generateTimeoutMs: 0 },
+        },
+      },
+    });
+
+    // Custom generator with a delay that would trigger idle timeout if passthrough
+    // were NOT active (pipeline.ts L118: timeoutMs <= 0 → skip idle timeout wrapping)
+    provider.generateStream = async () => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'text', delta: 'S' };
+        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+        yield { type: 'text', delta: 'low' };
+        yield { type: 'done', usage: { prompt: 0, completion: 4, total: 4 } };
+      },
+    });
+
+    const result = (await orch.run({
+      prompt: 'test',
+      stream: true,
+      profile: 'no_idle',
+    })) as AsyncIterable<StreamChunk>;
+
+    let text = '';
+    const consumer = (async () => {
+      for await (const chunk of result) {
+        if (chunk.type === 'text') text += chunk.delta;
+      }
+    })();
+
+    // Advance timers fully — the 200ms setTimeout in the generator fires,
+    // remaining chunks are yielded. Because generateTimeoutMs:0 disables the
+    // idle timeout, no TimeoutExceededError is thrown.
+    await vi.advanceTimersByTimeAsync(500);
+    await consumer;
+
+    expect(text).toBe('Slow');
+  });
 });
