@@ -33,7 +33,10 @@
         "question": "allow",
         "bash": "allow",
         "write": "ask",
-        "edit": "ask"
+        "edit": "ask",
+        "skill": {
+          "git-commit": "deny"
+        }
       }
     },
     "spbed": {
@@ -48,7 +51,10 @@
         "bash": "allow",
         "write": "allow",
         "edit": "allow",
-        "question": "allow"
+        "question": "allow",
+        "skill": {
+          "git-commit": "allow"
+        }
       }
     },
     "spqae": {
@@ -63,7 +69,10 @@
         "bash": "allow",
         "question": "allow",
         "write": "deny",
-        "edit": "deny"
+        "edit": "deny",
+        "skill": {
+          "git-commit": "deny"
+        }
       }
     }
   }
