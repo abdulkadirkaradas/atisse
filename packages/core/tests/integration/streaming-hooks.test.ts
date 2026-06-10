@@ -5,9 +5,22 @@ import type {
   RunContext,
   AfterRunContext,
   StreamChunk,
+  Tool,
+  ToolContext,
+  AfterToolContext,
+  TokenUsage,
+  LifecycleState,
 } from '../../src/interfaces.js';
+import { LifecycleStateMachine } from '../../src/lifecycle.js';
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
+import {
+  OrchestratorError,
+  PipelineInternalError,
+  RunCancelledError,
+  MaxToolRoundsExceededError,
+  ProviderUnavailableError,
+} from '../../src/errors.js';
 
 describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
   let provider: MockProvider;
@@ -19,9 +32,15 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('afterGenerate fires AFTER done chunk, not before', async () => {
+    // This test uses real timers because asyncIteratorWithIdleTimeout internally
+    // creates setTimeout timers. With fake timers those timeouts never fire,
+    // making the test fragile. Use real timers with a large timeout to avoid interference.
+    vi.useRealTimers();
+
     const callOrder: string[] = [];
 
     provider.enqueueStream({
@@ -104,7 +123,7 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
     expect(callOrder[0]).toBe('beforeGenerate');
   });
 
-  it('afterRun fires after streaming completes', async () => {
+  it('afterRun fires before pipeline done chunk', async () => {
     const callOrder: string[] = [];
 
     provider.enqueueStream({
@@ -130,19 +149,24 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
       stream: true,
     })) as AsyncIterable<StreamChunk>;
 
-    // Consume stream
+    // Consume stream — finalizePipeline (which runs afterRun) is called
+    // before the pipeline yields its own done chunk
     for await (const chunk of result) {
       if (chunk.type === 'done') {
         callOrder.push('done');
       }
     }
 
-    // Wait for async afterRun
-    await vi.runAllTimersAsync();
-
     expect(afterRunHook).toHaveBeenCalledTimes(1);
-    // afterRun runs after the done chunk
     expect(callOrder).toContain('afterRun');
+
+    // afterRun fires BEFORE the pipeline's done chunk —
+    // finalizePipeline (pipeline.ts:574) runs before the done chunk is yielded (pipeline.ts:1438)
+    const afterRunIndex = callOrder.indexOf('afterRun');
+    const doneIndex = callOrder.indexOf('done');
+    expect(afterRunIndex).toBeGreaterThanOrEqual(0);
+    expect(doneIndex).toBeGreaterThanOrEqual(0);
+    expect(afterRunIndex).toBeLessThan(doneIndex);
   });
 
   it('hook throw during streaming propagates as error chunk', async () => {
