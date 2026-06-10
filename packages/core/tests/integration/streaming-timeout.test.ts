@@ -109,4 +109,117 @@ describe('Integration: Streaming Timeout (D-M3-2)', () => {
 
     expect(text).toBe('Default');
   });
+
+  // Note: Kept despite asyncIteratorWithIdleTimeout being chunk-type-agnostic, because it
+  // explicitly documents the idle-timeout behavior when a tool_call chunk is the first chunk
+  // yielded. This serves as a behavioral spec for the tool_call + idle timeout combination.
+  it('streaming with tool calls and idle timeout fires timeout error', async () => {
+    vi.useFakeTimers();
+
+    // Custom generator: tool_call chunk immediately, then long delay before done
+    provider.generateStream = async () => ({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'tool_call',
+          toolCall: {
+            id: 'test_id',
+            name: 'test_tool',
+            arguments: '{}',
+            input: {},
+          },
+          usage: { prompt: 0, completion: 0, total: 0 },
+        };
+
+        // Delay that exceeds the idle timeout
+        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+
+        yield {
+          type: 'done',
+          usage: { prompt: 0, completion: 0, total: 0 },
+          toolCall: {
+            id: 'test_id',
+            name: 'test_tool',
+            arguments: '{}',
+            input: {},
+          },
+        };
+      },
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 50, toolTimeoutMs: 1000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    let errorChunk: StreamChunk | undefined;
+    const consumer = (async () => {
+      for await (const chunk of result) {
+        if (chunk.type === 'error') {
+          errorChunk = chunk;
+        }
+      }
+    })();
+
+    // Advance past the idle timeout (50ms) but before the done delay (200ms)
+    await vi.advanceTimersByTimeAsync(100);
+    await consumer;
+
+    expect(errorChunk).toBeDefined();
+    if (errorChunk?.type === 'error') {
+      expect(errorChunk.error).toBeInstanceOf(TimeoutExceededError);
+    }
+  });
+
+  it('user AbortSignal takes priority over idle timeout mid-stream', async () => {
+    vi.useFakeTimers();
+    const ac = new AbortController();
+
+    provider.generateStream = async () => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'text', delta: 'A' };
+        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+        yield { type: 'text', delta: 'B' };
+        yield { type: 'done', usage: { prompt: 0, completion: 2, total: 2 } };
+      },
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      timeout: { generateTimeoutMs: 5000, toolTimeoutMs: 1000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+      signal: ac.signal,
+    })) as AsyncIterable<StreamChunk>;
+
+    const chunks: StreamChunk[] = [];
+    const consumer = (async () => {
+      for await (const chunk of result) {
+        chunks.push(chunk);
+      }
+    })();
+
+    // Advance past first chunk (immediate), generator now waiting on setTimeout(200)
+    await vi.advanceTimersByTimeAsync(50);
+
+    // Abort user signal mid-stream — verifies RunCancelledError is yielded
+    ac.abort();
+
+    // Advance remaining timers
+    await vi.advanceTimersByTimeAsync(200);
+    await consumer;
+
+    const errorChunks = chunks.filter(
+      (c): c is Extract<StreamChunk, { type: 'error' }> => c.type === 'error',
+    );
+    expect(errorChunks.length).toBeGreaterThanOrEqual(1);
+    expect(errorChunks[0]?.error).toBeInstanceOf(RunCancelledError);
+  });
 });
