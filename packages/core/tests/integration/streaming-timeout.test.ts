@@ -276,4 +276,58 @@ describe('Integration: Streaming Timeout (D-M3-2)', () => {
 
     expect(text).toBe('Slow');
   });
+
+  // ── G3: Pre-stream API call timeout ────────────────────────────────────
+  // This tests the OTHER timeout mechanism in pipeline.ts: AbortSignal.timeout()
+  // created in buildPromptRequest (L72-74). This fires during the generateStream()
+  // API call itself (before any chunks are yielded), as opposed to the per-chunk
+  // idle timeout which fires between chunks. MockProvider does not observe
+  // request.signal, so we use a custom inline provider that hangs until the signal fires.
+
+  it('pre-stream AbortSignal.timeout cancels hanging generateStream', async () => {
+    vi.useFakeTimers();
+
+    const hangingProvider: AIProvider = {
+      id: 'hanging',
+      capabilities: { streaming: true, toolCalling: false, vision: false, maxContextTokens: 128_000 },
+      generate: async () => {
+        throw new Error('unused');
+      },
+      generateStream: async (request) => {
+        // Hang until the request's AbortSignal fires (from AbortSignal.timeout)
+        return new Promise<AsyncIterable<StreamChunk>>((_resolve, reject) => {
+          if (request.signal?.aborted) {
+            reject(request.signal.reason);
+            return;
+          }
+          request.signal?.addEventListener('abort', () => {
+            reject(request.signal?.reason);
+          });
+        });
+      },
+    };
+
+    const orchestrator = new Orchestrator({
+      provider: hangingProvider,
+      timeout: { generateTimeoutMs: 50, toolTimeoutMs: 1000, totalTimeoutMs: 60_000 },
+    });
+
+    const resultPromise = orchestrator.run({ prompt: 'test', stream: true });
+
+    // Advance past the AbortSignal.timeout(50) — the signal fires, the
+    // hanging provider's promise rejects, and the pipeline wraps the error.
+    await vi.advanceTimersByTimeAsync(100);
+
+    let errorReceived = false;
+    for await (const chunk of await resultPromise) {
+      if (chunk.type === 'error') {
+        errorReceived = true;
+        // The non-OrchestratorError (DOMException/TimeoutError) is wrapped
+        // as PipelineInternalError by handleOrchestratorError (pipeline.ts L176)
+        expect(chunk.error).toBeInstanceOf(PipelineInternalError);
+      }
+    }
+
+    expect(errorReceived).toBe(true);
+  });
 });
