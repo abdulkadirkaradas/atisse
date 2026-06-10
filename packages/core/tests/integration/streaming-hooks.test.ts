@@ -1009,4 +1009,166 @@ describe('Integration: Streaming Hook Timing (D-M3-3)', () => {
     expect(doneReceived).toBe(true);
   });
 
+  // ── LOW PRIORITY: Additional coverage ───────────────────────────────
+
+  it('profile hooks merge correctly with base hooks during streaming', async () => {
+    const callOrder: string[] = [];
+
+    const baseBeforeGenerate = vi.fn(async (ctx: BeforeGenerateContext) => {
+      callOrder.push('baseBeforeGenerate');
+      return ctx;
+    });
+    const baseAfterGenerate = vi.fn(async (ctx: AfterGenerateContext) => {
+      callOrder.push('baseAfterGenerate');
+      return ctx;
+    });
+    const profileBeforeGenerate = vi.fn(async (ctx: BeforeGenerateContext) => {
+      callOrder.push('profileBeforeGenerate');
+      return ctx;
+    });
+    const profileAfterGenerate = vi.fn(async (ctx: AfterGenerateContext) => {
+      callOrder.push('profileAfterGenerate');
+      return ctx;
+    });
+
+    const profileProvider = new MockProvider('profile-hooks-stream');
+    profileProvider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Profile hooks merged' },
+        { type: 'done', usage: { prompt: 5, completion: 15, total: 20 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      hooks: {
+        beforeGenerate: [baseBeforeGenerate],
+        afterGenerate: [baseAfterGenerate],
+      },
+      profiles: {
+        'hooks-stream': {
+          name: 'hooks-stream',
+          provider: profileProvider,
+          hooks: {
+            beforeGenerate: [profileBeforeGenerate],
+            afterGenerate: [profileAfterGenerate],
+          },
+        },
+      },
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      profile: 'hooks-stream',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    for await (const chunk of result) {
+      void chunk;
+    }
+
+    // All 4 hooks must fire: base hooks first, then profile hooks (concatenation order)
+    expect(baseBeforeGenerate).toHaveBeenCalledTimes(1);
+    expect(baseAfterGenerate).toHaveBeenCalledTimes(1);
+    expect(profileBeforeGenerate).toHaveBeenCalledTimes(1);
+    expect(profileAfterGenerate).toHaveBeenCalledTimes(1);
+
+    // Order: base beforeGenerate → profile beforeGenerate → base afterGenerate → profile afterGenerate
+    expect(callOrder).toEqual([
+      'baseBeforeGenerate',
+      'profileBeforeGenerate',
+      'baseAfterGenerate',
+      'profileAfterGenerate',
+    ]);
+  });
+
+  it('streaming afterGenerate fires during GENERATING state, before COMPLETING', async () => {
+    const events: string[] = [];
+    const originalTransition = LifecycleStateMachine.prototype.transition;
+
+    vi.spyOn(LifecycleStateMachine.prototype, 'transition').mockImplementation(
+      function (this: LifecycleStateMachine, to: LifecycleState) {
+        events.push(to);
+        return originalTransition.call(this, to);
+      },
+    );
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'State at afterGenerate' },
+        { type: 'done', usage: { prompt: 0, completion: 20, total: 20 } },
+      ],
+    });
+
+    const afterGenerateHook = vi.fn(async (ctx: AfterGenerateContext) => {
+      events.push('afterGenerate');
+      return ctx;
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      hooks: { afterGenerate: [afterGenerateHook] },
+      timeout: { generateTimeoutMs: 5000, toolTimeoutMs: 1000, totalTimeoutMs: 60_000 },
+    });
+
+    const result = (await orchestrator.run({ prompt: 'test', stream: true })) as AsyncIterable<StreamChunk>;
+    for await (const chunk of result) {
+      void chunk;
+    }
+
+    expect(afterGenerateHook).toHaveBeenCalledTimes(1);
+
+    // Verify state machine ordering:
+    // last GENERATING transition → afterGenerate hook → COMPLETING → COMPLETED
+    const genIdx = events.lastIndexOf('GENERATING');
+    const hookIdx = events.indexOf('afterGenerate');
+    const completingIdx = events.indexOf('COMPLETING');
+    const completedIdx = events.lastIndexOf('COMPLETED');
+
+    expect(genIdx).toBeGreaterThanOrEqual(0);
+    expect(hookIdx).toBeGreaterThan(genIdx);
+    expect(completingIdx).toBeGreaterThan(hookIdx);
+    expect(completedIdx).toBe(events.length - 1);
+  });
+
+  it('composite lifecycle ordering — all 4 hook types fire in correct order during streaming', async () => {
+    const callOrder: string[] = [];
+
+    provider.enqueueStream({
+      chunks: [
+        { type: 'text', delta: 'Final' },
+        { type: 'done', usage: { prompt: 0, completion: 5, total: 5 } },
+      ],
+    });
+
+    const orchestrator = new Orchestrator({
+      provider,
+      hooks: {
+        beforeRun: [async (ctx) => { callOrder.push('beforeRun'); return ctx; }],
+        beforeGenerate: [async (ctx) => { callOrder.push('beforeGenerate'); return ctx; }],
+        afterGenerate: [async (ctx) => { callOrder.push('afterGenerate'); return ctx; }],
+        afterRun: [async (ctx) => { callOrder.push('afterRun'); return ctx; }],
+      },
+      timeout: { generateTimeoutMs: 5000, totalTimeoutMs: 60_000 },
+    });
+
+    vi.runAllTimersAsync();
+    const result = (await orchestrator.run({
+      prompt: 'test',
+      stream: true,
+    })) as AsyncIterable<StreamChunk>;
+
+    for await (const chunk of result) {
+      void chunk;
+    }
+    await vi.runAllTimersAsync();
+
+    expect(callOrder).toEqual([
+      'beforeRun',
+      'beforeGenerate',
+      'afterGenerate',
+      'afterRun',
+    ]);
+  });
 });
