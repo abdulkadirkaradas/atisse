@@ -495,6 +495,36 @@ describe('Integration: Orchestrator Core Run', () => {
       ).toThrow(ConfigValidationError);
     });
 
+    it('retry.maxAttempts: 0 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { maxAttempts: 0 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('retry.maxAttempts: -1 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { maxAttempts: -1 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('retry.maxAttempts: Infinity throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { maxAttempts: Infinity },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
     it('duplicate tool names throws ConfigValidationError', () => {
       const tool: Tool = {
         name: 'duplicate',
