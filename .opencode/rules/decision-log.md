@@ -297,3 +297,31 @@ Consult this before proposing changes that might revisit recorded decisions.
 - `tool-controller.ts` unchanged — `z.never()` stays as defense-in-depth.
 - `testing-standards.md` updated: REQUIRED construction-time ConfigValidationError test + RECOMMENDED runtime z.never() defense-in-depth test added to What MUST Be Tested section.
 - Classification: NOT a breaking change (patch-level; closes a documented contract enforcement gap).
+
+---
+
+## ADR-037: `ProviderMalformedResponse` Renamed to `ProviderMalformedResponseError`
+
+**Decision:** Rename `ProviderMalformedResponse` class to `ProviderMalformedResponseError` for consistency with the `PascalCase ending in Error` convention defined in `api-design.md` §Naming Conventions.
+
+**Rationale:** Every other error class in the codebase ends in `Error` (`ProviderRateLimitError`, `ToolExecutionError`, `ConfigValidationError`, etc.). `ProviderMalformedResponse` was the sole exception, breaking the naming contract for error classes. Adapter authors catching errors by type must be able to rely on the convention.
+
+**Consequence:**
+- Breaking change — any consumer catching `ProviderMalformedResponse` by type must update to `ProviderMalformedResponseError`.
+- All references updated across `packages/core/`, `packages/provider-openai/`, and `packages/provider-anthropic/` (38 locations).
+- The 12-char suffix addition is mechanical; no behavioral change.
+- Changeset: MAJOR bump for `@atisse/core` (breaking class rename).
+
+---
+
+## ADR-038: `retry.attempt` Event Renamed to `retry.attempted`
+
+**Decision:** Rename the `retry.attempt` event type string to `retry.attempted` for consistency with the `noun.verb` past tense convention defined in `api-design.md` §Naming Conventions.
+
+**Rationale:** All other event types use past-tense verbs (`run.completed`, `tool.failed`, `fallback.triggered`, `context.loaded`, `profile.resolved`). `retry.attempt` used the bare noun form of the verb. The past tense `attempted` matches the established pattern and is grammatically consistent.
+
+**Consequence:**
+- Non-breaking string change — event consumers listening for `retry.attempt` must update their listener registration to `retry.attempted`.
+- Updated in 6 locations: type definition (`interfaces.ts`), emit site (`pipeline.ts` 2×), and test listeners (2 test files).
+- No change to the shape of the event payload.
+- Changeset: MINOR bump for `@atisse/core` (string literal change, no interface change).
