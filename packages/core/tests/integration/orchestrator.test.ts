@@ -93,6 +93,32 @@ describe('Integration: Orchestrator Core Run', () => {
       }
       expect(fullText).toBe('Hello world');
     });
+
+    it('run.input.prompt is always role: user (never system)', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response' });
+
+      const orchestrator = new Orchestrator({
+        provider,
+        systemPrompt: 'You are a helpful assistant.',
+      });
+
+      await orchestrator.run({ prompt: 'Hello, world!' });
+
+      const lastRequest = provider.lastRequest();
+      expect(lastRequest).toBeDefined();
+
+      // Verify user prompt message has role: 'user'
+      const userMessage = lastRequest!.messages.find((m) => m.content === 'Hello, world!');
+      expect(userMessage).toBeDefined();
+      expect(userMessage!.role).toBe('user');
+
+      // Verify NO message has role: 'system' with user prompt content (S-2 boundary)
+      const systemMessages = lastRequest!.messages.filter(
+        (m) => m.role === 'system' && m.content === 'Hello, world!',
+      );
+      expect(systemMessages).toHaveLength(0);
+    });
   });
 
   describe('Memory integration', () => {
@@ -561,6 +587,22 @@ describe('Integration: Orchestrator Core Run', () => {
     it('stream: true + fallbackProvider throws ConfigValidationError at run()', async () => {
       const provider = createProvider();
       provider.capabilities.streaming = false;
+
+      const orchestrator = new Orchestrator({
+        provider,
+        fallbackProvider: createProvider(),
+      });
+
+      await expect(orchestrator.run({ prompt: 'test', stream: true })).rejects.toThrow(
+        ConfigValidationError,
+      );
+    });
+
+    it('stream: true + base-level fallbackProvider throws ConfigValidationError', async () => {
+      const provider = createProvider();
+      // capabilities.streaming is true by default — don't set to false
+      // to isolate the fallbackProvider check (orchestrator.ts:167) from the
+      // streaming capabilities check
 
       const orchestrator = new Orchestrator({
         provider,
