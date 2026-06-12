@@ -555,6 +555,9 @@ describe('Integration: Orchestrator Core Run', () => {
       );
     });
 
+  });
+
+  describe('Streaming validation', () => {
     it('stream: true + fallbackProvider throws ConfigValidationError at run()', async () => {
       const provider = createProvider();
       provider.capabilities.streaming = false;
