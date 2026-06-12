@@ -14,9 +14,13 @@
     "test": "pnpm --recursive test",
     "test:coverage": "pnpm --recursive test:coverage",
     "build": "pnpm --recursive build",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish",
     "docs": "typedoc --out docs/api packages/core/src/index.ts"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.1",
     "@typescript-eslint/eslint-plugin": "^8.60.0",
