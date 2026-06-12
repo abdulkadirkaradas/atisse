@@ -18,6 +18,10 @@ export interface MockProviderFailureConfig {
   error: OrchestratorError;
 }
 
+/**
+ * Entry for MockProvider queue.
+ * Either a successful response with optional tool calls, or an error to simulate failure.
+ */
 export type MockProviderEntry =
   | { text: string; toolCalls?: ToolCall[]; finishReason?: PromptResponse['finishReason'] }
   | { error: OrchestratorError };
@@ -29,6 +33,18 @@ export type MockProviderStreamEntry = {
   chunks: StreamChunk[];
 };
 
+/**
+ * Mock provider for testing. Implements AIProvider with a configurable response queue.
+ *
+ * Pre-populate the queue with enqueue() before each test, then call generate()
+ * or generateStream() to consume entries in FIFO order.
+ *
+ * @example
+ * const provider = new MockProvider();
+ * provider.enqueue({ text: 'Hello, world!' });
+ * const response = await provider.generate({ messages: [] });
+ * console.log(response.text); // 'Hello, world!'
+ */
 export class MockProvider implements AIProvider {
   readonly id: string;
   readonly capabilities: ProviderCapabilities;
@@ -69,6 +85,10 @@ export class MockProvider implements AIProvider {
     return this;
   }
 
+  /**
+   * Enqueue a stream entry for consumption by generateStream().
+   * Unlike enqueue(), this does NOT push to the regular queue.
+   */
   enqueueStream(entry: MockProviderStreamEntry): this {
     this.streamQueue.push(entry);
     return this;
@@ -102,22 +122,27 @@ export class MockProvider implements AIProvider {
     return { chunks };
   }
 
+  /** Returns the total number of generate()/generateStream() calls made. */
   callCount(): number {
     return this._callCount;
   }
 
+  /** Returns true if the provider was called exactly n times. */
   wasCalledTimes(n: number): boolean {
     return this._callCount === n;
   }
 
+  /** Returns the most recent PromptRequest received, or undefined if never called. */
   lastRequest(): PromptRequest | undefined {
     return this._history[this._history.length - 1];
   }
 
+  /** Returns a copy of all PromptRequest calls received. */
   calls(): PromptRequest[] {
     return [...this._history];
   }
 
+  /** Resets all queues, call count, history, and failure injections. */
   reset(): void {
     this.queue = [];
     this.streamQueue = [];

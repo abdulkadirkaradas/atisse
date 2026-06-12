@@ -22,6 +22,7 @@ const VALID_TRANSITIONS: Record<LifecycleState, LifecycleState[]> = {
 /**
  * Manages lifecycle state transitions for a single run() call.
  * Each instance is created fresh per run() and never stored on Orchestrator.
+ * Terminal states: COMPLETED or FAILED — no further transitions allowed from these states.
  */
 export class LifecycleStateMachine {
   private current: LifecycleState = 'INITIALIZED';

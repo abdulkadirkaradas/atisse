@@ -194,10 +194,7 @@ export interface TokenUsage {
  * All values are in milliseconds, measured as wall-clock time.
  *
  * Emitted as an optional field on `run.completed` — consumers that
- * do not need timing data can ignore it.
- *
- * @breakingChange — v1 — Adding StepTimings modifies the
- * `run.completed` event shape. The `timings` field is optional
+ * do not need timing data can ignore it. The `timings` field is optional
  * so existing consumers continue to work, but consumers performing
  * exact shape matching may need updates.
  */
@@ -218,30 +215,43 @@ export interface StepTimings {
 
 /**
  * Retry policy configuration.
+ * Defaults: maxAttempts=3, baseDelayMs=500, maxDelayMs=30000, jitter=true
  */
 export interface RetryPolicy {
+  /** Total attempts (1 initial + N-1 retries). Default: 3 */
   maxAttempts: number;
+  /** Base delay before first retry in ms. Default: 500 */
   baseDelayMs: number;
+  /** Maximum delay cap in ms. Default: 30000 */
   maxDelayMs: number;
+  /** Apply 30% partial jitter. Default: true */
   jitter: boolean;
 }
 
 /**
  * Timeout policy configuration.
+ * Defaults: generateTimeoutMs=30000, toolTimeoutMs=10000, totalTimeoutMs=60000
  */
 export interface TimeoutPolicy {
+  /** Per provider call timeout in ms. Default: 30000 */
   generateTimeoutMs: number;
+  /** Per Tool.execute() timeout in ms. Default: 10000 */
   toolTimeoutMs: number;
+  /** Entire run() wall-clock timeout in ms. Default: 60000 */
   totalTimeoutMs: number;
 }
 
 /**
  * Tool execution policy configuration.
+ * Defaults: maxToolRounds=5, allowParallelTools=false, toolTimeoutMs=10000
  */
 export interface ToolPolicy {
+  /** Cumulative tool rounds across entire run(). Default: 5. Min: 1 */
   maxToolRounds: number;
+  /** Must be false in v1. Default: false */
   allowParallelTools: boolean;
-  toolTimeoutMs: number; // mirror of TimeoutPolicy.toolTimeoutMs — synced by profile resolver; ToolController enforces via Promise.race; default: 10_000
+  /** Per Tool.execute() timeout in ms. Mirrors TimeoutPolicy.toolTimeoutMs. Default: 10000 */
+  toolTimeoutMs: number;
 }
 
 /**
