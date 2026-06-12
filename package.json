@@ -17,6 +17,7 @@
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish",
+    "bench": "npx tsx scripts/benchmark.ts",
     "docs": "typedoc --out docs/api packages/core/src/index.ts"
   },
   "devDependencies": {
