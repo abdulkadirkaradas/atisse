@@ -56,3 +56,7 @@ jobs:
       # 6. Documentation generation
       - name: TypeDoc
         run: pnpm run docs
+
+      # 7. Security audit
+      - name: Security audit
+        run: pnpm audit --audit-level=high
