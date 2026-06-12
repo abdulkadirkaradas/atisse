@@ -121,7 +121,9 @@ expect(chunks.join('')).toBe('Hello');
 ### MockMemoryAdapter (`tests/fixtures/mock-memory.ts`)
 
 Error-injection capable. Use in unit tests where memory failure scenarios must be tested.
-Use `InMemoryAdapter` (from `@atisse/memory-inmemory`) in integration tests.
+In integration tests, prefer `InMemoryAdapter` (from `@atisse/memory-inmemory`).
+`MockMemoryAdapter` is also acceptable when importing an adapter-package in `core/`
+is undesirable (e.g. stress/concurrency tests that must avoid a core→adapter dependency).
 
 ```typescript
 class MockMemoryAdapter implements MemoryAdapter {
