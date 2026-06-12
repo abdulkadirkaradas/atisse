@@ -3,7 +3,7 @@ import {
   AnthropicMessageResponse,
   createTestableProvider,
 } from '../mock-provider.js';
-import { Message, ProviderMalformedResponse, ToolDefinition } from '@atisse/core';
+import { Message, ProviderMalformedResponseError, ToolDefinition } from '@atisse/core';
 
 describe('AnthropicProvider Unit Tests - generate()', () => {
   beforeEach(() => {
@@ -329,7 +329,7 @@ describe('AnthropicProvider Unit Tests - generate()', () => {
       expect(result.finishReason).toBe('length');
     });
 
-    it('should throw ProviderMalformedResponse for null stop_reason', async () => {
+    it('should throw ProviderMalformedResponseError for null stop_reason', async () => {
       const mockResponse = {
         id: 'msg_123',
         type: 'message',
@@ -348,10 +348,10 @@ describe('AnthropicProvider Unit Tests - generate()', () => {
         provider.generate({
           messages: [{ role: 'user', content: 'Hi' }],
         }),
-      ).rejects.toThrow(ProviderMalformedResponse);
+      ).rejects.toThrow(ProviderMalformedResponseError);
     });
 
-    it('should throw ProviderMalformedResponse for unrecognized stop_reason', async () => {
+    it('should throw ProviderMalformedResponseError for unrecognized stop_reason', async () => {
       const mockResponse = {
         id: 'msg_123',
         type: 'message',
@@ -370,7 +370,7 @@ describe('AnthropicProvider Unit Tests - generate()', () => {
         provider.generate({
           messages: [{ role: 'user', content: 'Hi' }],
         }),
-      ).rejects.toThrow(ProviderMalformedResponse);
+      ).rejects.toThrow(ProviderMalformedResponseError);
     });
 
     it('should pass tools to Anthropic API', async () => {
@@ -474,7 +474,7 @@ describe('AnthropicProvider Unit Tests - generate()', () => {
       expect((callArgs.metadata as Record<string, unknown>).user_id).toBe('abc');
     });
 
-    it('should throw ProviderMalformedResponse when content array is missing', async () => {
+    it('should throw ProviderMalformedResponseError when content array is missing', async () => {
       const mockResponse = {
         id: 'msg_123',
         type: 'message',
@@ -491,7 +491,7 @@ describe('AnthropicProvider Unit Tests - generate()', () => {
         provider.generate({
           messages: [{ role: 'user', content: 'Hi' }],
         }),
-      ).rejects.toThrow(ProviderMalformedResponse);
+      ).rejects.toThrow(ProviderMalformedResponseError);
     });
   });
 });

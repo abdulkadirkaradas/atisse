@@ -16,7 +16,7 @@ import {
   ProviderAuthError,
   ProviderUnavailableError,
   ProviderTimeoutError,
-  ProviderMalformedResponse,
+  ProviderMalformedResponseError,
   MaxRetriesExceededError,
   FallbackExhaustedError,
   ConfigValidationError,
@@ -916,16 +916,16 @@ describe('Integration: Orchestrator Core Run', () => {
   });
 
   describe('Provider non-retryable error handling', () => {
-    it('throws ProviderMalformedResponse immediately without retry', async () => {
+    it('throws ProviderMalformedResponseError immediately without retry', async () => {
       const provider = createProvider();
-      provider.enqueue({ error: new ProviderMalformedResponse('Malformed JSON response') });
+      provider.enqueue({ error: new ProviderMalformedResponseError('Malformed JSON response') });
 
       const orchestrator = new Orchestrator({
         provider,
         retry: { maxAttempts: 3, baseDelayMs: 10, jitter: false },
       });
 
-      await expect(orchestrator.run({ prompt: 'test' })).rejects.toThrow(ProviderMalformedResponse);
+      await expect(orchestrator.run({ prompt: 'test' })).rejects.toThrow(ProviderMalformedResponseError);
       expect(provider.wasCalledTimes(1)).toBe(true);
     });
   });

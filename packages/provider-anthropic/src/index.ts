@@ -21,7 +21,7 @@ import {
   ProviderTimeoutError,
   ProviderUnavailableError,
   ProviderAuthError,
-  ProviderMalformedResponse,
+  ProviderMalformedResponseError,
   OrchestratorError,
 } from '@atisse/core';
 
@@ -284,7 +284,7 @@ export class AnthropicProvider implements AIProvider {
             try {
               input = JSON.parse(tracked.args || '{}');
             } catch {
-              yield { type: 'error', error: new ProviderMalformedResponse('Failed to parse tool call arguments') };
+              yield { type: 'error', error: new ProviderMalformedResponseError('Failed to parse tool call arguments') };
               return;
             }
 
@@ -326,12 +326,12 @@ export class AnthropicProvider implements AIProvider {
   private extractResponse(message: AnthropicMessageResponse): PromptResponse {
     // Defensive validation — fail fast with non-retryable error
     if (!message.content || !Array.isArray(message.content)) {
-      throw new ProviderMalformedResponse(
+      throw new ProviderMalformedResponseError(
         'Anthropic response missing "content" array',
       );
     }
     if (!message.usage || typeof message.usage.input_tokens !== 'number') {
-      throw new ProviderMalformedResponse(
+      throw new ProviderMalformedResponseError(
         'Anthropic response missing valid "usage" object',
       );
     }
@@ -374,7 +374,7 @@ export class AnthropicProvider implements AIProvider {
     if (stopReason === 'max_tokens') return 'length';
     if (stopReason === 'stop_sequence') return 'stop';
 
-    throw new ProviderMalformedResponse(
+    throw new ProviderMalformedResponseError(
       `Unrecognized stop_reason: ${stopReason ?? 'null'}`,
     );
   }
@@ -435,19 +435,19 @@ export class AnthropicProvider implements AIProvider {
 
   private parseImageContent(image: { url: string; mimeType: string }): AnthropicImageBlockParam {
     if (!image.url.startsWith('data:')) {
-      throw new ProviderMalformedResponse('Image URL must be a data URI for Anthropic provider');
+      throw new ProviderMalformedResponseError('Image URL must be a data URI for Anthropic provider');
     }
 
     const matches = image.url.match(/^data:([^;]+);base64,(.+)$/);
     if (!matches) {
-      throw new ProviderMalformedResponse('Invalid data URI format');
+      throw new ProviderMalformedResponseError('Invalid data URI format');
     }
 
     const mediaType = matches[1];
     const data = matches[2];
 
     if (!mediaType || !data) {
-      throw new ProviderMalformedResponse('Invalid data URI format');
+      throw new ProviderMalformedResponseError('Invalid data URI format');
     }
 
     return {

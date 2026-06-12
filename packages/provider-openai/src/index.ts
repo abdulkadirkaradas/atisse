@@ -34,7 +34,7 @@ import {
   ProviderTimeoutError,
   ProviderUnavailableError,
   ProviderAuthError,
-  ProviderMalformedResponse,
+  ProviderMalformedResponseError,
   OrchestratorError,
 } from '@atisse/core';
 
@@ -163,7 +163,7 @@ export class OpenAIProvider implements AIProvider {
 
       const choice = this.extractChoice(completion);
       if (!choice) {
-        throw new ProviderMalformedResponse('No completion choice returned');
+        throw new ProviderMalformedResponseError('No completion choice returned');
       }
 
       const finishReason = this.mapFinishReason(choice.finish_reason);
@@ -405,7 +405,7 @@ export class OpenAIProvider implements AIProvider {
         return toolResult;
       }
 
-      throw new ProviderMalformedResponse(
+      throw new ProviderMalformedResponseError(
         `Unknown message role: ${(msg as { role: string }).role}`,
       );
     });

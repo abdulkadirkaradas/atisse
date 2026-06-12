@@ -79,7 +79,7 @@ export class ProviderAuthError extends OrchestratorError {
 /**
  * Malformed response from provider - not retryable.
  */
-export class ProviderMalformedResponse extends OrchestratorError {
+export class ProviderMalformedResponseError extends OrchestratorError {
   readonly code = 'PROVIDER_MALFORMED_RESPONSE' as const;
   readonly retryable = false;
 

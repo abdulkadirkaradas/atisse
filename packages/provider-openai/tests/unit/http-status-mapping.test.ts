@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   ProviderAuthError,
-  ProviderMalformedResponse,
+  ProviderMalformedResponseError,
   ProviderRateLimitError,
   ProviderTimeoutError,
   ProviderUnavailableError,
@@ -189,7 +189,7 @@ describe('OpenAIProvider Unit Tests - HTTP Status Mapping', () => {
     });
 
     it('should re-throw OrchestratorError subclasses', async () => {
-      const originalError = new ProviderMalformedResponse('No choice');
+      const originalError = new ProviderMalformedResponseError('No choice');
 
       const mockCreateFn = vi.fn().mockRejectedValue(originalError);
       const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
@@ -201,7 +201,7 @@ describe('OpenAIProvider Unit Tests - HTTP Status Mapping', () => {
         caughtError = error as Error;
       }
 
-      expect(caughtError).toBeInstanceOf(ProviderMalformedResponse);
+      expect(caughtError).toBeInstanceOf(ProviderMalformedResponseError);
     });
 
     it('should preserve ProviderRateLimitError in streaming path', async () => {

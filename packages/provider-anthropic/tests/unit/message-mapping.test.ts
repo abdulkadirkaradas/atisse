@@ -4,7 +4,7 @@ import {
   createMockStream,
   createTestableProvider,
 } from '../mock-provider.js';
-import { type Message, ProviderMalformedResponse } from '@atisse/core';
+import { type Message, ProviderMalformedResponseError } from '@atisse/core';
 
 describe('AnthropicProvider Unit Tests - Message Mapping', () => {
   beforeEach(() => {
@@ -131,7 +131,7 @@ describe('AnthropicProvider Unit Tests - Message Mapping', () => {
       expect(contentArray[1]?.source?.data).toBe('/9j/4AAQ==');
     });
 
-    it('should throw ProviderMalformedResponse for non-data-URI image URL', async () => {
+    it('should throw ProviderMalformedResponseError for non-data-URI image URL', async () => {
       const mockResponse = {
         id: 'msg_123',
         type: 'message',
@@ -156,7 +156,7 @@ describe('AnthropicProvider Unit Tests - Message Mapping', () => {
         },
       ];
 
-      await expect(provider.generate({ messages })).rejects.toThrow(ProviderMalformedResponse);
+      await expect(provider.generate({ messages })).rejects.toThrow(ProviderMalformedResponseError);
     });
 
     it('should forward AbortSignal in generateStream()', async () => {

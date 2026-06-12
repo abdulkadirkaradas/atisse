@@ -51,7 +51,7 @@ export {
   ProviderTimeoutError,
   ProviderUnavailableError,
   ProviderAuthError,
-  ProviderMalformedResponse,
+  ProviderMalformedResponseError,
   ToolExecutionError,
   ToolValidationError,
   ToolNotFoundError,

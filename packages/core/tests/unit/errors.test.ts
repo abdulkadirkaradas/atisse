@@ -4,7 +4,7 @@ import {
   ProviderTimeoutError,
   ProviderUnavailableError,
   ProviderAuthError,
-  ProviderMalformedResponse,
+  ProviderMalformedResponseError,
   ToolExecutionError,
   ToolValidationError,
   ToolNotFoundError,
@@ -58,7 +58,7 @@ describe('isRetryable', () => {
   describe('returns false for non-retryable errors', () => {
     const nonRetryableErrors = [
       ['ProviderAuthError', () => new ProviderAuthError('auth')],
-      ['ProviderMalformedResponse', () => new ProviderMalformedResponse('malformed')],
+      ['ProviderMalformedResponseError', () => new ProviderMalformedResponseError('malformed')],
       ['ToolValidationError', () => new ToolValidationError('tool', ['err'])],
       ['ToolNotFoundError', () => new ToolNotFoundError('tool')],
       [
@@ -170,14 +170,14 @@ describe('ProviderAuthError', () => {
   });
 });
 
-describe('ProviderMalformedResponse', () => {
+describe('ProviderMalformedResponseError', () => {
   it('has code PROVIDER_MALFORMED_RESPONSE', () => {
-    const error = new ProviderMalformedResponse('bad json');
+    const error = new ProviderMalformedResponseError('bad json');
     expect(error.code).toBe('PROVIDER_MALFORMED_RESPONSE');
   });
 
   it('is not retryable', () => {
-    const error = new ProviderMalformedResponse('bad json');
+    const error = new ProviderMalformedResponseError('bad json');
     expect(error.retryable).toBe(false);
   });
 });

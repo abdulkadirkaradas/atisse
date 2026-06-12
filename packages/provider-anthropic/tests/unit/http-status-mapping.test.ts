@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createTestableProvider } from '../mock-provider.js';
 import {
   ProviderAuthError,
-  ProviderMalformedResponse,
+  ProviderMalformedResponseError,
   ProviderRateLimitError,
   ProviderTimeoutError,
   ProviderUnavailableError,
@@ -179,7 +179,7 @@ describe('AnthropicProvider Unit Tests - HTTP Status Mapping', () => {
     });
 
     it('should NOT re-wrap OrchestratorError — rethrow directly', async () => {
-      const originalError = new ProviderMalformedResponse('Bad data');
+      const originalError = new ProviderMalformedResponseError('Bad data');
 
       const mockCreateFn = vi.fn().mockRejectedValue(originalError);
       const provider = createTestableProvider({ apiKey: 'test-key' }, mockCreateFn);
@@ -191,7 +191,7 @@ describe('AnthropicProvider Unit Tests - HTTP Status Mapping', () => {
         caughtError = error as Error;
       }
 
-      expect(caughtError).toBeInstanceOf(ProviderMalformedResponse);
+      expect(caughtError).toBeInstanceOf(ProviderMalformedResponseError);
       expect(caughtError).toBe(originalError);
     });
 
