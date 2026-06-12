@@ -332,7 +332,7 @@ describe('profiles (integration)', () => {
       });
 
       const retryEvents: Array<{ attempt: number }> = [];
-      orchestrator.on('retry.attempt', (e) => {
+      orchestrator.on('retry.attempted', (e) => {
         retryEvents.push({ attempt: e.attempt });
       });
 

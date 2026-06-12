@@ -790,7 +790,7 @@ async function executeGenerationRound(
         });
 
         eventBus.emit({
-          type: 'retry.attempt',
+          type: 'retry.attempted',
           runId,
           attempt: retryAttempt,
           reason: error.code,
@@ -1123,7 +1123,7 @@ async function executeStreamingGenerationRound(
       stateMachine.transition('RETRYING');
       const delayMs = calculateDelay(attempt, config.retry, err);
       logger.warn('Retrying', { runId, attempt, reason: err.code, delayMs });
-      eventBus.emit({ type: 'retry.attempt', runId, attempt, reason: err.code, delayMs });
+      eventBus.emit({ type: 'retry.attempted', runId, attempt, reason: err.code, delayMs });
       await abortRunCall({ delayMs, ...(input.signal ? { signal: input.signal } : {}) });
       stateMachine.transition('GENERATING');
     }

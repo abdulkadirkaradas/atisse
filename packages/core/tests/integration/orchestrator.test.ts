@@ -717,7 +717,7 @@ describe('Integration: Orchestrator Core Run', () => {
       });
 
       const events: Array<{ type: string; attempt?: number }> = [];
-      const unsub = orchestrator.on('retry.attempt', (e) => events.push(e));
+      const unsub = orchestrator.on('retry.attempted', (e) => events.push(e));
 
       vi.useFakeTimers();
       const runPromise = orchestrator.run({ prompt: 'test' });
