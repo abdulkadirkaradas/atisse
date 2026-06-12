@@ -87,7 +87,7 @@ Ensure prerequisite commits (e.g., a `refactor` or a `chore` that prepares the c
 
 ---
 
-## Error Prevention - Top 5 Mistakes to Avoid
+## Error Prevention - Top 6 Mistakes to Avoid
 
 ### #1: Amalgamated Commits (SRP Violation)
 
@@ -114,6 +114,13 @@ Ensure prerequisite commits (e.g., a `refactor` or a `chore` that prepares the c
 * ❌ **WRONG:** Committing a feature that depends on a refactored utility function *before* committing the refactor itself.
 * ✅ **CORRECT:** Ordering the refactor commit first, followed by the feature commit.
 
+### #6: File Reference Standard
+
+Never use absolute paths that include user-specific directories. Always provide relative paths from the project root to ensure clarity and consistency.
+
+* ❌ **WRONG:** /home/<user>/<subpath>/<project>/packages/core/src/profile.ts
+* ✅ **CORRECT:** packages/core/src/profile.ts
+
 ---
 
 ## Quick Reference Checklist
@@ -124,5 +131,5 @@ Before outputting or executing, verify:
 * [ ] **SRP Check:** Are unrelated changes safely isolated into separate commits?
 * [ ] **Semantic Prefix:** Does every single commit start with an approved type?
 * [ ] **Breaking Changes:** Is the `!` appended correctly if structural changes occurred?
-* [ ] **File Trailing:** Are all modified absolute paths explicitly listed?
+* [ ] **File Trailing:** Are all modified relative paths explicitly listed?
 * [ ] **Execution Order:** Do structural prep-commits come before implementation-commits?
