@@ -8,6 +8,7 @@ import type {
 import { Orchestrator } from '../../src/orchestrator.js';
 import { MockProvider } from '../../src/testing/mock-provider.js';
 import { ConfigValidationError } from '../../src/errors.js';
+import { buildTool } from '../fixtures/builders.js';
 
 describe('profiles (integration)', () => {
   let provider: MockProvider;
@@ -22,7 +23,7 @@ describe('profiles (integration)', () => {
     vi.useRealTimers();
   });
 
-  describe('resolveConfig', () => {
+  describe('profile resolution', () => {
     it('resolves profile end-to-end', async () => {
       const profileProvider = new MockProvider('profile-model');
       profileProvider.enqueue({ text: 'profile response' });
@@ -87,12 +88,12 @@ describe('profiles (integration)', () => {
     });
 
     it('profile tools: [] replaces base tools', async () => {
-      const mockTool = {
+      const mockTool = buildTool({
         name: 'base-tool',
         description: 'Base tool',
         inputSchema: { type: 'object', properties: {} },
         execute: async () => 'base',
-      };
+      });
 
       const orchestrator = new Orchestrator({
         provider,
@@ -108,7 +109,7 @@ describe('profiles (integration)', () => {
       const resultPromise = orchestrator.run({ prompt: 'test', profile: 'empty' });
       vi.runAllTimersAsync();
 
-      await expect(resultPromise).resolves.toBeDefined();
+      await expect(resultPromise).resolves.toMatchObject({ text: 'response' });
     });
 
     it('streaming run with active profile → profile provider used for stream', async () => {
