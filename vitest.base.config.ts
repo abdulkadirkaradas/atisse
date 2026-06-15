@@ -13,4 +13,7 @@ export const baseConfig = defineConfig({
     passWithNoTests: true,
     coverage: baseCoverage,
   },
+  resolve: {
+    tsconfigPaths: true,
+  },
 });
