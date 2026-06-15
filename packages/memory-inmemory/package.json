@@ -30,7 +30,7 @@
     "@atisse/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
-    "vitest": "^4.1.7"
+    "@types/node": "^25.9.3",
+    "vitest": "^4.1.8"
   }
 }
