@@ -704,7 +704,7 @@ describe('Integration: Orchestrator Core Run', () => {
       expect(events[0]!.error).toBeInstanceOf(Error);
     });
 
-    it('retry.attempt emitted per retry', async () => {
+    it('retry.attempted emitted per retry', async () => {
       const provider = createProvider();
       provider
         .enqueue({ error: new ProviderRateLimitError('429', 50) })
