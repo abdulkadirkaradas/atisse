@@ -6,8 +6,8 @@
     "start": "npx tsx index.ts"
   },
   "dependencies": {
-    "@atisse/core": "workspace:*",
-    "@atisse/provider-openai": "workspace:*"
+    "@atisse/core": "^1.0.0",
+    "@atisse/provider-openai": "^1.0.0"
   },
   "devDependencies": {
     "tsx": "^4.0.0"
