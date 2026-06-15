@@ -5,7 +5,7 @@ import prettier from 'eslint-config-prettier';
 
 export default [
   {
-    ignores: ['**/*.config.ts'],
+    ignores: ['**/*.config.ts', '**/coverage/**'],
   },
   {
     files: ['**/src/**/*.ts'],
