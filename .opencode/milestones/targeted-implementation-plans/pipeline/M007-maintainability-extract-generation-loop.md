@@ -262,7 +262,7 @@ async function executeGenerationRound(
    };
    ```
 5. Try `executeWithRetry(() => activeProvider.generate(promptRequest), config.retry, onRetry)`:
-   - `onRetry` updates `attempt`, transitions to RETRYING, emits `retry.attempt`
+   - `onRetry` updates `attempt`, transitions to RETRYING, emits `retry.attempted`
    - On `MaxRetriesExceededError` + `config.fallbackProvider` exists: fallback logic
    - On non-retryable error: rethrow
    - On retryable without fallback: sleep, return `{ action: 'continue' }` (loop retries internally via RETRYING state machine — but the outer caller's while loop is for tool retries, not provider retries)

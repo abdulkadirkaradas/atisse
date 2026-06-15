@@ -153,7 +153,7 @@ eventBus.emit({
   toolName,
   error: { code: error.code, message: error.message, retryable: error.retryable },
 });
-eventBus.emit({ type: 'retry.attempt', runId, attempt, reason: error.code, delayMs });
+eventBus.emit({ type: 'retry.attempted', runId, attempt, reason: error.code, delayMs });
 eventBus.emit({ type: 'fallback.triggered', runId, reason: error.code });
 eventBus.emit({ type: 'context.loaded', runId, providerId, messageCount });
 eventBus.emit({

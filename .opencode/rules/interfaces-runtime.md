@@ -247,7 +247,7 @@ export type OrchestratorEvent =
   | { type: 'tool.called'; runId: string; toolName: string; round: number }
   | { type: 'tool.completed'; runId: string; toolName: string; durationMs: number }
   | { type: 'tool.failed'; runId: string; toolName: string; error: EventErrorPayload }
-  | { type: 'retry.attempt'; runId: string; attempt: number; reason: string; delayMs: number }
+  | { type: 'retry.attempted'; runId: string; attempt: number; reason: string; delayMs: number }
   | { type: 'fallback.triggered'; runId: string; reason: string }
   | { type: 'context.loaded'; runId: string; providerId: string; messageCount: number }
   | { type: 'context.failed'; runId: string; providerId: string; error: EventErrorPayload }

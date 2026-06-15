@@ -132,7 +132,7 @@ enforced at the top level regardless of which step is active.
     - Append tool results to messages; return to GENERATING with updated messages
 
 7.  RETRYING
-    - Exponential backoff + jitter delay; emit: retry.attempt
+    - Exponential backoff + jitter delay; emit: retry.attempted
     - Return to GENERATING or CONTEXT_INJECTING
 
 8.  FALLBACKING

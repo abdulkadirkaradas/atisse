@@ -314,14 +314,14 @@ Consult this before proposing changes that might revisit recorded decisions.
 
 ---
 
-## ADR-038: `retry.attempt` Event Renamed to `retry.attempted`
+## ADR-038: `retry.attempted` Event Renamed to `retry.attempted`
 
-**Decision:** Rename the `retry.attempt` event type string to `retry.attempted` for consistency with the `noun.verb` past tense convention defined in `api-design.md` §Naming Conventions.
+**Decision:** Rename the `retry.attempted` event type string to `retry.attempteded` for consistency with the `noun.verb` past tense convention defined in `api-design.md` §Naming Conventions.
 
-**Rationale:** All other event types use past-tense verbs (`run.completed`, `tool.failed`, `fallback.triggered`, `context.loaded`, `profile.resolved`). `retry.attempt` used the bare noun form of the verb. The past tense `attempted` matches the established pattern and is grammatically consistent.
+**Rationale:** All other event types use past-tense verbs (`run.completed`, `tool.failed`, `fallback.triggered`, `context.loaded`, `profile.resolved`). `retry.attempted` used the bare noun form of the verb. The past tense `attempted` matches the established pattern and is grammatically consistent.
 
 **Consequence:**
-- Non-breaking string change — event consumers listening for `retry.attempt` must update their listener registration to `retry.attempted`.
+- Non-breaking string change — event consumers listening for `retry.attempted` must update their listener registration to `retry.attempteded`.
 - Updated in 6 locations: type definition (`interfaces.ts`), emit site (`pipeline.ts` 2×), and test listeners (2 test files).
 - No change to the shape of the event payload.
 - Changeset: MINOR bump for `@atisse/core` (string literal change, no interface change).

@@ -434,7 +434,7 @@ export async function executePipeline(
 ### Step 7 — RETRYING
 
 - [ ] `stateMachine.transition('RETRYING')`
-- [ ] `emit: retry.attempt { runId, attempt, reason: error.code, delayMs }`
+- [ ] `emit: retry.attempted { runId, attempt, reason: error.code, delayMs }`
 - [ ] `log: warn 'Retrying' { runId, attempt, reason, delayMs }`
 - [ ] `await sleep(delayMs)`
 - [ ] Context error → `CONTEXT_INJECTING`; all others → `GENERATING`
@@ -649,7 +649,7 @@ Events:
 - [ ] `run.started` emitted with `runId`
 - [ ] `run.completed` emitted with `usage` and `durationMs`
 - [ ] `run.failed` carries `OrchestratorError` instance (not `EventErrorPayload`)
-- [ ] `retry.attempt` emitted per retry
+- [ ] `retry.attempted` emitted per retry
 - [ ] `fallback.triggered` emitted when fallback activates
 - [ ] `tool.called` + `tool.completed` emitted per tool
 - [ ] `tool.failed` carries `EventErrorPayload` (not `OrchestratorError` instance)

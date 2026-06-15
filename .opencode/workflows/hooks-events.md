@@ -236,7 +236,7 @@ orchestrator.on('profile.resolved', ({ runId, profileName, overrides }) => {
 });
 
 // Retry alerting
-orchestrator.on('retry.attempt', ({ attempt, reason, delayMs }) => {
+orchestrator.on('retry.attempted', ({ attempt, reason, delayMs }) => {
   if (attempt >= 2) alerting.warn('LLM retrying', { attempt, reason });
 });
 
