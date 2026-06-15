@@ -8,10 +8,12 @@
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -24,7 +26,7 @@
     "test:coverage": "vitest run --coverage",
     "build": "tsup"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@atisse/core": "workspace:*"
   },
   "devDependencies": {
