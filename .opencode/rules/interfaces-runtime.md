@@ -45,6 +45,7 @@ export interface RunInput {
   sessionId?: string;
   stream?: boolean; // undefined treated as false
   metadata?: Record<string, unknown>; // pass-through; kernel does not read or modify
+  signal?: AbortSignal; // optional AbortSignal to cancel an in-flight run.
 }
 
 export interface RunOutput {
