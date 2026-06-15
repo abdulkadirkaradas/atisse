@@ -1,0 +1,19 @@
+{
+  "name": "@atisse/handoff-package",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server — handoff package persistence tool",
+  "scripts": {
+    "start": "tsx server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.0",
+    "@types/node": "^25.8.0",
+    "typescript": "^5.9.3"
+  }
+}

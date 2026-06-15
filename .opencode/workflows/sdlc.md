@@ -1,7 +1,3 @@
----
-description: Branching, commit conventions, pull request requirements, versioning with Changesets, CI/CD pipeline steps, and the definition of done for any feature or fix.
----
-
 # SDLC
 
 ## Software Development Lifecycle — Workflow and Process Standards

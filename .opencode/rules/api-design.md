@@ -1,8 +1,3 @@
----
-trigger: model_decision
-description: Load when adding, modifying, or reviewing any exported symbol, public method, or interface field; or when classifying whether a change is a breaking change under SemVer.
----
-
 # API DESIGN
 
 ## Public API Ergonomics and Contract Standards

@@ -1,7 +1,3 @@
----
-description: Test structure, coverage thresholds, MockProvider API contract, required test scenarios, error path coverage, and security-relevant test cases for the kernel.
----
-
 # TESTING STANDARDS
 
 ## Test Strategy, Structure, and Coverage Requirements
@@ -32,12 +28,14 @@ Fake timers: vi.useFakeTimers() — activated per-test only, never globally
 
 ## Coverage Requirements
 
-| Package                   | Minimum Coverage        |
-| ------------------------- | ----------------------- |
-| `@atisse/core`            | 70% lines, 70% branches |
-| `@atisse/provider-openai` | 60% lines               |
-| `@atisse/memory-redis`    | 60% lines               |
-| `@atisse/context-rag`     | 50% lines               |
+| Package                      | Minimum Coverage        |
+| ---------------------------- | ----------------------- |
+| `@atisse/core`               | 70% lines, 70% branches |
+| `@atisse/provider-openai`    | 60% lines               |
+| `@atisse/provider-anthropic` | 60% lines               |
+| `@atisse/memory-inmemory`    | 60% lines               |
+| `@atisse/memory-redis`       | 60% lines               |
+| `@atisse/context-rag`        | 50% lines               |
 
 Coverage is measured per PR. PRs that drop coverage below thresholds are blocked.
 
@@ -70,7 +68,7 @@ packages/core/
 
 ## MockProvider API Contract
 
-`MockProvider` is the only provider permitted in tests. No real API calls in any test.
+`MockProvider` is the exclusive provider for unit tests. No live API calls are permitted in any test.
 
 ### Queue Entries
 
@@ -123,7 +121,9 @@ expect(chunks.join('')).toBe('Hello');
 ### MockMemoryAdapter (`tests/fixtures/mock-memory.ts`)
 
 Error-injection capable. Use in unit tests where memory failure scenarios must be tested.
-Use `InMemoryAdapter` (from `@atisse/memory-inmemory`) in integration tests.
+In integration tests, prefer `InMemoryAdapter` (from `@atisse/memory-inmemory`).
+`MockMemoryAdapter` is also acceptable when importing an adapter-package in `core/`
+is undesirable (e.g. stress/concurrency tests that must avoid a core→adapter dependency).
 
 ```typescript
 class MockMemoryAdapter implements MemoryAdapter {
@@ -205,6 +205,24 @@ it('does NOT retry on auth error', async () => {
 });
 ```
 
+## Integration Test Provider Rule
+
+Integration tests that verify adapter-to-Orchestrator wiring MAY use real adapter
+instances with mocked SDK dependencies. No live API calls are permitted in any test —
+the `MockProvider` rule applies to all unit tests and any test that triggers `generate()`.
+
+When using a real adapter in integration tests:
+- Mock the underlying SDK using `vi.mock()`. Never mock provider internals.
+- Verify the adapter is correctly wired into the `Orchestrator` lifecycle
+  (retry, hooks, state transitions, error propagation).
+- Do NOT test SDK behavior — only the adapter's integration with the kernel.
+- Use `MockProvider` for unit-level provider behavior tests (error mapping, shape
+  transformation, streaming chunk assembly).
+
+This permits the pattern used in M4 integration tests (`provider-anthropic` with
+mocked `@anthropic-ai/sdk`, `memory-redis` with mocked `redis`, `context-rag` with
+mocked `VectorStore`), while preserving the absolute prohibition on live API calls.
+
 ---
 
 ## What NOT to Test
@@ -226,7 +244,9 @@ it('does NOT retry on auth error', async () => {
 - Memory is loaded before prompt composition and saved atomically after COMPLETING
 - Streaming delivers chunks in correct order with correct types
 - `run.input.prompt` is always `role: 'user'` — never `role: 'system'`
-- Tool with empty `inputSchema` (`{}`) is rejected as a configuration error
+- Tool with empty `inputSchema` (`{}`):
+  - REQUIRED: construction-time `ConfigValidationError` test (orchestrator.test.ts)
+  - RECOMMENDED: runtime `ToolValidationError` defense-in-depth test via `z.never()` fallback (tool-controller.test.ts)
 - Cross-session memory isolation: `load('session-A')` never returns session-B data
 - `stream: true` + `fallbackProvider` → `ConfigValidationError`
 - `allowParallelTools: true` → `ConfigValidationError`

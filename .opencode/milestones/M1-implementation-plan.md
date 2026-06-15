@@ -45,11 +45,11 @@ Optional but highly recommended for deeper context and rationale behind the impl
 | `.prettierrc`                               | Formatting rules per `.opencode/rules/typescript-style.md`                                                     |
 | `.prettierignore`                           | Excludes: `dist/`, `node_modules/`, `coverage/`, `*.md`                                        |
 | `vitest.base.config.ts`                     | Shared Vitest config — each package extends                                                    |
-| `packages/core/package.json`                | `@atisse/core` — exports field with two entry points; includes `"engines": { "node": ">=20" }` |
+| `packages/core/package.json`                | `@atisse/core` — exports field with two entry points; includes `"engines": { "node": ">=24" }` |
 | `packages/core/tsconfig.json`               | Extends `../../tsconfig.base.json`                                                             |
 | `packages/core/tsup.config.ts`              | ESM + CJS dual output                                                                          |
 | `packages/core/vitest.config.ts`            | Extends `../../vitest.base.config.ts`                                                          |
-| `packages/memory-inmemory/package.json`     | `@atisse/memory-inmemory` skeleton; includes `"engines": { "node": ">=20" }`                   |
+| `packages/memory-inmemory/package.json`     | `@atisse/memory-inmemory` skeleton; includes `"engines": { "node": ">=24" }`                   |
 | `packages/memory-inmemory/tsconfig.json`    | Extends root base                                                                              |
 | `packages/memory-inmemory/tsup.config.ts`   | Same tsup pattern as core                                                                      |
 | `packages/memory-inmemory/vitest.config.ts` | Extends root base                                                                              |
@@ -67,7 +67,7 @@ Optional but highly recommended for deeper context and rationale behind the impl
 - **`@atisse/core` exports field** — two subpath entries per A1 decision(A1 -> Decision 3):
   - `"."` → `./dist/index.js` / `./dist/index.cjs`
   - `"./testing"` → `./dist/testing/mock-provider.js` / `./dist/testing/mock-provider.cjs`
-- **`engines` field:** Root `package.json` and every adapter `package.json` must declare `"engines": { "node": ">=20" }`. This is complementary to CI `node-version` — it warns downstream consumers at install time. Not redundant.
+- **`engines` field:** Root `package.json` and every adapter `package.json` must declare `"engines": { "node": ">=24" }`. This is complementary to CI `node-version` — it warns downstream consumers at install time. Not redundant.
 
 ---
 
@@ -434,7 +434,7 @@ Per `.opencode/workflows/sdlc.md` §CI/CD Pipeline.
 - `pnpm --recursive test`
 - `pnpm --recursive test:coverage`
 
-Node.js version: 20. Package manager: pnpm (latest stable).
+Node.js version: 24+. Package manager: pnpm (latest stable).
 
 **TypeDoc:** Added in M1 in soft-fail mode. Script: `typedoc --out docs/api src/index.ts || true` — the `|| true` ensures a non-zero TypeDoc exit code does not fail the CI step. The `|| true` suffix is removed in M5 when TypeDoc errors become blocking.
 

@@ -29,6 +29,7 @@ export interface TimeoutPolicy {
 export interface ToolPolicy {
   maxToolRounds: number; // cumulative across entire run() — never resets on retry; default: 5; min: 1
   allowParallelTools: boolean; // MUST be false in v1; true → ConfigValidationError at construction; default: false
+  toolTimeoutMs: number; // mirror of TimeoutPolicy.toolTimeoutMs; synced by profile resolver at run() entry; ToolController enforces via Promise.race; default: 10_000
 }
 ```
 
@@ -44,6 +45,7 @@ export interface RunInput {
   sessionId?: string;
   stream?: boolean; // undefined treated as false
   metadata?: Record<string, unknown>; // pass-through; kernel does not read or modify
+  signal?: AbortSignal; // optional AbortSignal to cancel an in-flight run.
 }
 
 export interface RunOutput {
@@ -238,7 +240,7 @@ export interface EventBus {
 ```typescript
 export type OrchestratorEvent =
   | { type: 'run.started'; runId: string; timestamp: number; profile?: string }
-  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage }
+  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage; timings?: StepTimings }  // BREAKING(v1): Added timings field
   | { type: 'run.failed'; runId: string; error: OrchestratorError }
   // OrchestratorError instance — consumer can instanceof check; imported via `import type`
   | { type: 'generate.started'; runId: string; messageCount: number }
@@ -246,7 +248,7 @@ export type OrchestratorEvent =
   | { type: 'tool.called'; runId: string; toolName: string; round: number }
   | { type: 'tool.completed'; runId: string; toolName: string; durationMs: number }
   | { type: 'tool.failed'; runId: string; toolName: string; error: EventErrorPayload }
-  | { type: 'retry.attempt'; runId: string; attempt: number; reason: string; delayMs: number }
+  | { type: 'retry.attempted'; runId: string; attempt: number; reason: string; delayMs: number }
   | { type: 'fallback.triggered'; runId: string; reason: string }
   | { type: 'context.loaded'; runId: string; providerId: string; messageCount: number }
   | { type: 'context.failed'; runId: string; providerId: string; error: EventErrorPayload }
@@ -260,6 +262,7 @@ export type OrchestratorEvent =
         contextProviders: boolean;
         systemPrompt: boolean;
         retry: boolean;
+        toolPolicy: boolean;
       };
       hookCount: number;
     };

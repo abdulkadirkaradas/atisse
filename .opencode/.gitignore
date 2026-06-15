@@ -1,0 +1,9 @@
+# Ignored files
+node_modules
+package.json
+package-lock.json
+bun.lock
+handoffs
+
+# Excluded files
+!/tools/handoff-package/package.json

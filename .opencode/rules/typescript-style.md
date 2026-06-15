@@ -1,8 +1,3 @@
----
-trigger: model_decision
-description: Load when writing TypeScript code. Applies naming conventions, type declaration rules, async/await patterns, import ordering, and ESLint/Prettier configuration standards.
----
-
 # TYPESCRIPT STYLE
 
 ## Language Conventions and Syntax Standards

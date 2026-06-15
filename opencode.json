@@ -2,16 +2,19 @@
   "$schema": "https://opencode.ai/config.json",
   "autoupdate": true,
   "instructions": [
-    ".opencode/rules/philosophy.md",
-    ".opencode/rules/constraints.md",
-    ".opencode/rules/interfaces-core.md",
-    ".opencode/rules/interfaces-runtime.md",
-    ".opencode/rules/architecture.md",
-    ".opencode/rules/security.md",
-    ".opencode/rules/task-context.md",
-    ".opencode/rules/index.md",
-    ".opencode/rules/agent-safety.md"
+    ".opencode/rules/agent-safety.md",
+    "AGENTS.md",
+    ".opencode/rules/index.md"
   ],
+  "mcp": {
+    "handoff-package": {
+      "type": "local",
+      "command": ["npx", "tsx", ".opencode/tools/handoff-package/server.ts"]
+    }
+  },
+  "tools": {
+    "handoff-package": true
+  },
   "watcher": {
     "ignore": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"]
   },
@@ -28,9 +31,12 @@
         "websearch": "allow",
         "webfetch": "allow",
         "question": "allow",
-        "bash": "deny",
-        "write": "deny",
-        "edit": "deny"
+        "bash": "allow",
+        "write": "ask",
+        "edit": "ask",
+        "skill": {
+          "git-commit": "deny"
+        }
       }
     },
     "spbed": {
@@ -45,7 +51,10 @@
         "bash": "allow",
         "write": "allow",
         "edit": "allow",
-        "question": "allow"
+        "question": "allow",
+        "skill": {
+          "git-commit": "allow"
+        }
       }
     },
     "spqae": {
@@ -60,7 +69,10 @@
         "bash": "allow",
         "question": "allow",
         "write": "deny",
-        "edit": "deny"
+        "edit": "deny",
+        "skill": {
+          "git-commit": "deny"
+        }
       }
     }
   }

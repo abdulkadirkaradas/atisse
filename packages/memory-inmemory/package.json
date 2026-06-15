@@ -1,17 +1,19 @@
 {
   "name": "@atisse/memory-inmemory",
-  "version": "0.0.1",
-  "private": true,
+  "version": "1.0.0",
+  "packageManager": "pnpm@11.5.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -24,11 +26,11 @@
     "test:coverage": "vitest run --coverage",
     "build": "tsup"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@atisse/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "vitest": "^2.0.0"
+    "@types/node": "^25.9.3",
+    "vitest": "^4.1.8"
   }
 }

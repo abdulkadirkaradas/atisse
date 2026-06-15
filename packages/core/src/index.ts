@@ -16,6 +16,7 @@ export type {
   ContextProvider,
   ContextProviderInput,
   TokenUsage,
+  StepTimings,
   RetryPolicy,
   TimeoutPolicy,
   ToolPolicy,
@@ -40,6 +41,9 @@ export type {
   OrchestratorErrorCode,
 } from './interfaces.js';
 
+// Orchestrator class
+export { Orchestrator } from './orchestrator.js';
+
 // Error classes — users must be able to catch by type
 export {
   OrchestratorError,
@@ -47,18 +51,21 @@ export {
   ProviderTimeoutError,
   ProviderUnavailableError,
   ProviderAuthError,
-  ProviderMalformedResponse,
+  ProviderMalformedResponseError,
   ToolExecutionError,
   ToolValidationError,
   ToolNotFoundError,
   ContextLoadError,
   ContextProviderError,
+  MemorySaveError,
   MaxRetriesExceededError,
+  MaxToolRoundsExceededError,
   TokenLimitExceededError,
   TimeoutExceededError,
   FallbackExhaustedError,
   InvalidStateTransitionError,
   ConfigValidationError,
+  PipelineInternalError,
   isRetryable,
 } from './errors.js';
 

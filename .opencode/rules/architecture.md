@@ -99,12 +99,12 @@ enforced at the top level regardless of which step is active.
         2. contextMessages (from ContextProviders)
         3. memoryMessages (trimmed to maxTokens — oldest dropped first; never trims context)
         4. userMessage (role: 'user', always last)
-        5. tool definitions passed separately in PromptRequest.tools
     - estimateTokens(text) ≈ Math.ceil(text.length / 4) — rough approximation
 
 5.  GENERATING (+ retry loop)
     - Run beforeGenerate hooks (pipeline-blocking); context: BeforeGenerateContext
-    - Build PromptRequest — attach AbortSignal from generateTimeoutMs if configured
+    - Build PromptRequest — attach AbortSignal from generateTimeoutMs if configured;
+      tool definitions are passed separately in PromptRequest.tools (built from config.tools)
     - If stream: false → Call AIProvider.generate(request)
     - If stream: true  → Call AIProvider.generateStream(request) (returns Promise<AsyncIterable>)
         Dispatch guard (checked at run() entry, throws ConfigValidationError if violated):
@@ -132,7 +132,7 @@ enforced at the top level regardless of which step is active.
     - Append tool results to messages; return to GENERATING with updated messages
 
 7.  RETRYING
-    - Exponential backoff + jitter delay; emit: retry.attempt
+    - Exponential backoff + jitter delay; emit: retry.attempted
     - Return to GENERATING or CONTEXT_INJECTING
 
 8.  FALLBACKING

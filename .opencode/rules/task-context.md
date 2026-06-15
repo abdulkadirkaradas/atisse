@@ -150,7 +150,7 @@ the prose summary is for human readability only.
 {
   "schema_version": "1.0",
   "task_id":        "<uuid-v4>",
-  "task_label":     "<PROFILE>*<semantic-slug>*<random-4-digit-int>",
+  "task_label":     "<PROFILE>-<semantic_slug>-<random-4-digit-int>",
   "source":         "<SPSA | SPBED | SPQAE | SPDOE>",
   "destination":    "<SPSA | SPBED | SPQAE | SPDOE | USER>",
   "routing_reason": "<ACTION>.<DOMAIN>",
@@ -159,7 +159,8 @@ the prose summary is for human readability only.
   "artifacts":      ["<file paths created or modified>"],
   "flags":          ["<open issues requiring attention — empty array if none>"],
   "required_action": "<single, specific action expected from the destination>",
-  "context_summary": "<brief paragraph — what destination needs to know to proceed>"
+  "context_summary": "<brief paragraph — what destination needs to know to proceed>",
+  "created_at":     "<ISO 8601 UTC timestamp — e.g. 2025-04-20T14:32:00Z>"
 }
 ```
 
@@ -169,8 +170,8 @@ the prose summary is for human readability only.
 Never regenerated on subsequent handoffs. This is the stable identifier for
 orchestration tracing.
 
-**`task_label`** — Human-readable slug. Format: `PROFILE*semantic-slug*NNNN`.
-Example: `SPBED*implement-retry-backoff*3847`. Semantic slug uses lowercase
+**`task_label`** — Human-readable slug. Format: `PROFILE-semantic_slug-NNNN`.
+Example: `SPBED-implement_retry_backoff-3847`. Semantic slug uses lowercase
 kebab-case, max 5 words. Random suffix is a 4-digit integer.
 
 **`routing_reason`** — Composed of exactly one ACTION value and one DOMAIN
@@ -215,6 +216,10 @@ MUST NOT be empty.
 exactly what to do next. Example: `"Review the interface change proposal in
 flags[0] and approve or reject with rationale."`
 
+**`created_at`** — ISO 8601 UTC timestamp generated at the moment the handoff
+is produced. Format: `YYYY-MM-DDTHH:MM:SSZ`. Example: `"2025-04-20T14:32:00Z"`.
+Never copied from a previous handoff — always reflects the current moment.
+
 ---
 
 ### Routing Authority Matrix
@@ -243,7 +248,7 @@ Task completed by SPBED, no flags, routed to SPSA for architectural review:
 {
   "schema_version": "1.0",
   "task_id":        "a3f8c1d2-7b4e-4f2a-9c6d-0e5b3f1a8d7c",
-  "task_label":     "SPBED*implement-retry-backoff*3847",
+  "task_label":     "SPBED-implement_retry_backoff-3847",
   "source":         "SPBED",
   "destination":    "SPSA",
   "routing_reason": "REVIEW_REQUIRED.ARCHITECTURE",
@@ -253,5 +258,6 @@ Task completed by SPBED, no flags, routed to SPSA for architectural review:
   "flags":          [],
   "required_action": "Review retry backoff implementation for ADR-007 compliance and approve or reject.",
   "context_summary": "Implemented exponential backoff with jitter in retry.ts. No interface changes were required. All existing tests pass. No Hard Stops were triggered during implementation."
+  "created_at":     "2025-04-20T14:32:00Z"
 }
 ```

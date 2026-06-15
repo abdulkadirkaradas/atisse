@@ -11,10 +11,10 @@ const VALID_TRANSITIONS: Record<LifecycleState, LifecycleState[]> = {
   CONTEXT_INJECTED: ['PROMPT_COMPOSED', 'FAILED'],
   PROMPT_COMPOSED: ['GENERATING', 'FAILED'],
   GENERATING: ['TOOL_EXECUTING', 'RETRYING', 'FALLBACKING', 'COMPLETING', 'FAILED'],
-  TOOL_EXECUTING: ['GENERATING', 'RETRYING', 'FAILED'],
-  RETRYING: ['GENERATING', 'CONTEXT_INJECTING', 'FALLBACKING', 'FAILED'],
-  FALLBACKING: ['GENERATING', 'FAILED'],
-  COMPLETING: ['COMPLETED'],
+  TOOL_EXECUTING: ['GENERATING', 'RETRYING', 'COMPLETING', 'FAILED'],
+  RETRYING: ['GENERATING', 'CONTEXT_INJECTING', 'FALLBACKING', 'RETRYING', 'COMPLETING', 'FAILED'],
+  FALLBACKING: ['GENERATING', 'COMPLETING', 'FAILED'],
+  COMPLETING: ['COMPLETED', 'FAILED'],
   COMPLETED: [],
   FAILED: [],
 };
@@ -22,6 +22,7 @@ const VALID_TRANSITIONS: Record<LifecycleState, LifecycleState[]> = {
 /**
  * Manages lifecycle state transitions for a single run() call.
  * Each instance is created fresh per run() and never stored on Orchestrator.
+ * Terminal states: COMPLETED or FAILED — no further transitions allowed from these states.
  */
 export class LifecycleStateMachine {
   private current: LifecycleState = 'INITIALIZED';

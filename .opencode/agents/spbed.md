@@ -205,10 +205,19 @@ SPBED routes exclusively to SPSA on every task completion. The
 SPBED NEVER routes directly to SPQAE or USER except on iteration limit.
 All output — completed or flagged — passes through SPSA first.
 
+### Handoff Persistence
+
+**Before producing the handoff package prose**, call the `save_handoff` MCP tool:
+
+- `handoff_json` — the complete handoff package as a JSON string (schema v1.0)
+- `conversation_md` — the last assistant message by default; set `include_full_conversation: true` only when full history is explicitly needed
+- The tool will write files to `.opencode/handoffs/[task_label]/[task_label].json` and `.md`
+- If the tool call fails, include the error in `flags` and proceed with the prose handoff
+
 ### Handoff Package
 
 Every outgoing routing action MUST include a complete Handoff Package as
 defined in `rules/task-context.md`. When originating a new task at
 iteration 1, generate a fresh UUID-v4 for `task_id` and construct a
-`task_label` following the `PROFILE*semantic-slug*NNNN` format. On all
+`task_label` following the `PROFILE-semantic_slug-NNNN` format. On all
 subsequent handoffs, preserve `task_id` and increment `iteration` by 1.

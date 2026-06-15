@@ -32,11 +32,16 @@ export type OrchestratorErrorCode =
   | 'CONTEXT_LOAD_FAILED'
   | 'CONTEXT_PROVIDER_FAILED'
   | 'MAX_RETRIES_EXCEEDED'
+  | 'MEMORY_SAVE_FAILED'
+  | 'MAX_TOOL_ROUNDS_EXCEEDED'
   | 'TOKEN_LIMIT_EXCEEDED'
   | 'TIMEOUT_EXCEEDED'
   | 'FALLBACK_EXHAUSTED'
   | 'INVALID_STATE_TRANSITION'
-  | 'CONFIG_VALIDATION_FAILED';
+  | 'CONFIG_VALIDATION_FAILED'
+  | 'HOOK_EXECUTION_FAILED'
+  | 'PIPELINE_INTERNAL_ERROR'
+  | 'RUN_CANCELLED';
 
 /**
  * Serialized error payload for event bus.
@@ -185,30 +190,68 @@ export interface TokenUsage {
 }
 
 /**
+ * Per-step timing breakdown for a pipeline execution.
+ * All values are in milliseconds, measured as wall-clock time.
+ *
+ * Emitted as an optional field on `run.completed` — consumers that
+ * do not need timing data can ignore it. The `timings` field is optional
+ * so existing consumers continue to work, but consumers performing
+ * exact shape matching may need updates.
+ */
+export interface StepTimings {
+  /** Time spent in context provider loading + memory load */
+  contextLoadingMs: number;
+  /** Time spent in PromptComposer.compose() */
+  compositionMs: number;
+  /** Total time spent in GENERATING across all rounds (includes retries) */
+  generationMs: number;
+  /** Total time spent in TOOL_EXECUTING across all rounds */
+  toolExecutionMs: number;
+  /** Time spent in COMPLETING (memory save + afterRun hooks) */
+  finalizationMs: number;
+  /** Total pipeline wall-clock time */
+  totalMs: number;
+}
+
+/**
  * Retry policy configuration.
+ * Defaults: maxAttempts=3, baseDelayMs=500, maxDelayMs=30000, jitter=true
  */
 export interface RetryPolicy {
+  /** Total attempts (1 initial + N-1 retries). Default: 3 */
   maxAttempts: number;
+  /** Base delay before first retry in ms. Default: 500 */
   baseDelayMs: number;
+  /** Maximum delay cap in ms. Default: 30000 */
   maxDelayMs: number;
+  /** Apply 30% partial jitter. Default: true */
   jitter: boolean;
 }
 
 /**
  * Timeout policy configuration.
+ * Defaults: generateTimeoutMs=30000, toolTimeoutMs=10000, totalTimeoutMs=60000
  */
 export interface TimeoutPolicy {
+  /** Per provider call timeout in ms. Default: 30000 */
   generateTimeoutMs: number;
+  /** Per Tool.execute() timeout in ms. Default: 10000 */
   toolTimeoutMs: number;
+  /** Entire run() wall-clock timeout in ms. Default: 60000 */
   totalTimeoutMs: number;
 }
 
 /**
  * Tool execution policy configuration.
+ * Defaults: maxToolRounds=5, allowParallelTools=false, toolTimeoutMs=10000
  */
 export interface ToolPolicy {
+  /** Cumulative tool rounds across entire run(). Default: 5. Min: 1 */
   maxToolRounds: number;
+  /** Must be false in v1. Default: false */
   allowParallelTools: boolean;
+  /** Per Tool.execute() timeout in ms. Mirrors TimeoutPolicy.toolTimeoutMs. Default: 10000 */
+  toolTimeoutMs: number;
 }
 
 /**
@@ -220,6 +263,8 @@ export interface RunInput {
   sessionId?: string;
   stream?: boolean;
   metadata?: Record<string, unknown>;
+  /** Optional AbortSignal to cancel an in-flight run. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -386,14 +431,14 @@ export interface EventBus {
  */
 export type OrchestratorEvent =
   | { type: 'run.started'; runId: string; timestamp: number; profile?: string }
-  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage }
+  | { type: 'run.completed'; runId: string; durationMs: number; usage: TokenUsage; timings?: StepTimings }
   | { type: 'run.failed'; runId: string; error: OrchestratorError }
   | { type: 'generate.started'; runId: string; messageCount: number }
   | { type: 'generate.completed'; runId: string; durationMs: number; finishReason: string }
   | { type: 'tool.called'; runId: string; toolName: string; round: number }
   | { type: 'tool.completed'; runId: string; toolName: string; durationMs: number }
   | { type: 'tool.failed'; runId: string; toolName: string; error: EventErrorPayload }
-  | { type: 'retry.attempt'; runId: string; attempt: number; reason: string; delayMs: number }
+  | { type: 'retry.attempted'; runId: string; attempt: number; reason: string; delayMs: number }
   | { type: 'fallback.triggered'; runId: string; reason: string }
   | { type: 'context.loaded'; runId: string; providerId: string; messageCount: number }
   | { type: 'context.failed'; runId: string; providerId: string; error: EventErrorPayload }
@@ -407,6 +452,7 @@ export type OrchestratorEvent =
         contextProviders: boolean;
         systemPrompt: boolean;
         retry: boolean;
+        toolPolicy: boolean;
       };
       hookCount: number;
     };

@@ -1,0 +1,15 @@
+{
+  "name": "@atisse-example/01-basic-run",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx index.ts"
+  },
+  "dependencies": {
+    "@atisse/core": "^1.0.0",
+    "@atisse/provider-openai": "^1.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0"
+  }
+}

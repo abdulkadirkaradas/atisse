@@ -1,8 +1,3 @@
----
-trigger: model_decision
-description: Load when scoping work against milestones, checking v1 exit criteria, or evaluating whether a feature belongs in the current development phase.
----
-
 # ROADMAP
 
 ## Development Milestones — @atisse/core

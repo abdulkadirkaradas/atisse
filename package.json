@@ -1,9 +1,10 @@
 {
-  "name": "@atisse/core",
+  "name": "atisse",
   "version": "0.0.1",
   "private": true,
+  "packageManager": "pnpm@11.5.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "lint": "eslint .",
@@ -13,20 +14,27 @@
     "test": "pnpm --recursive test",
     "test:coverage": "pnpm --recursive test:coverage",
     "build": "pnpm --recursive build",
-    "docs": "typedoc --out docs/api src/index.ts || true"
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish",
+    "bench": "npx tsx scripts/benchmark.ts",
+    "docs": "typedoc --out docs/api packages/core/src/index.ts"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^20.19.39",
-    "@typescript-eslint/eslint-plugin": "^8.58.0",
-    "@typescript-eslint/parser": "^8.58.0",
-    "eslint": "^9.39.4",
-    "eslint-config-prettier": "^9.1.2",
-    "prettier": "^3.8.1",
+    "@types/node": "^25.9.3",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "@vitest/coverage-v8": "^4.1.8",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.4",
     "tsup": "^8.5.1",
-    "typedoc": "^0.26.11",
+    "typedoc": "^0.28.19",
     "typescript": "^5.9.3",
-    "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^2.1.9"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
   }
 }

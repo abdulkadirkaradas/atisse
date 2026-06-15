@@ -1,8 +1,3 @@
----
-trigger: model_decision
-description: Load when scoping a new feature, assessing whether a request fits the project identity, or explaining what the project does and explicitly does not do.
----
-
 # PROJECT DESCRIPTION
 
 ## AI Orchestration Kernel
@@ -13,7 +8,7 @@ description: Load when scoping a new feature, assessing whether a request fits t
 
 **Package name:** `@atisse/core`
 **Type:** Open-source npm library (MIT)
-**Runtime:** Node.js 20+, TypeScript 5+
+**Runtime:** Node.js 24+, TypeScript 5+
 **One-liner:** A lightweight, production-grade execution kernel for managing the LLM interaction lifecycle.
 
 ---
@@ -112,7 +107,7 @@ This project transforms a raw LLM SDK call into a **managed, deterministic, obse
 | Concern           | Tool                          | Notes                                                                    |
 | ----------------- | ----------------------------- | ------------------------------------------------------------------------ |
 | Language          | TypeScript 5.4+               | `strict: true`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess` |
-| Runtime           | Node.js 20+                   | ESM + CJS dual output via tsup                                           |
+| Runtime           | Node.js 24+                   | ESM + CJS dual output via tsup                                           |
 | Package manager   | pnpm workspaces               | Monorepo — each adapter is an independent package                        |
 | Build             | tsup                          | Produces ESM + CJS + `.d.ts` per package                                 |
 | Test runner       | Vitest + @vitest/coverage-v8  | All tests use `MockProvider` — no real API calls                         |

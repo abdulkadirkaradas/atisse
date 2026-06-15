@@ -79,7 +79,7 @@ export class ProviderAuthError extends OrchestratorError {
 /**
  * Malformed response from provider - not retryable.
  */
-export class ProviderMalformedResponse extends OrchestratorError {
+export class ProviderMalformedResponseError extends OrchestratorError {
   readonly code = 'PROVIDER_MALFORMED_RESPONSE' as const;
   readonly retryable = false;
 
@@ -164,6 +164,21 @@ export class ContextProviderError extends OrchestratorError {
   }
 }
 
+/**
+ * Memory save failure during COMPLETING — infrastructure error, not retryable.
+ * The generation has already succeeded; a memory save failure does not invalidate
+ * the generation, but the run transitions to FAILED because the session state
+ * is not persisted.
+ */
+export class MemorySaveError extends OrchestratorError {
+  readonly code = 'MEMORY_SAVE_FAILED' as const;
+  readonly retryable = false;
+
+  constructor(cause?: unknown) {
+    super('Memory save failed during finalization', cause);
+  }
+}
+
 // ── Policy Errors ─────────────────────────────────────────────
 
 /**
@@ -178,6 +193,21 @@ export class MaxRetriesExceededError extends OrchestratorError {
     public readonly lastError: OrchestratorError,
   ) {
     super(`Max retries exceeded after ${attempts} attempts`);
+  }
+}
+
+/**
+ * Maximum tool rounds exceeded - not retryable.
+ * Thrown when tool execution rounds exceed the configured limit.
+ */
+export class MaxToolRoundsExceededError extends OrchestratorError {
+  readonly code = 'MAX_TOOL_ROUNDS_EXCEEDED' as const;
+  readonly retryable = false;
+  constructor(
+    public readonly rounds: number,
+    public readonly maxRounds: number,
+  ) {
+    super(`Tool round limit exceeded: ${rounds}/${maxRounds}`);
   }
 }
 
@@ -251,12 +281,53 @@ export class ConfigValidationError extends OrchestratorError {
 }
 
 /**
+ * Pipeline internal error - not retryable.
+ * Thrown when a non-OrchestratorError is caught in the pipeline execution path
+ * to satisfy the StreamChunk and event error contracts.
+ */
+export class PipelineInternalError extends OrchestratorError {
+  readonly code = 'PIPELINE_INTERNAL_ERROR' as const;
+  readonly retryable = false;
+
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
+}
+
+// ── Hook Errors ───────────────────────────────────────────────
+
+/**
+ * Hook execution failure - not retryable.
+ * Thrown when a hook function throws an error that is not already an OrchestratorError.
+ */
+export class HookExecutionError extends OrchestratorError {
+  readonly code = 'HOOK_EXECUTION_FAILED' as const;
+  readonly retryable = false;
+
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+  }
+}
+
+// ── Cancellation Errors ──────────────────────────────────────────
+
+/**
+ * Run was cancelled via AbortSignal.
+ * Not retryable — the user explicitly cancelled.
+ */
+export class RunCancelledError extends OrchestratorError {
+  readonly code = 'RUN_CANCELLED' as const;
+  readonly retryable = false;
+
+  constructor() {
+    super('Run was cancelled');
+  }
+}
+
+/**
  * Determines if an error is retryable.
  * Returns true only for OrchestratorError instances with retryable === true.
  */
 export function isRetryable(error: unknown): boolean {
-  if (error instanceof OrchestratorError) {
-    return error.retryable;
-  }
-  return false;
+  return error instanceof OrchestratorError && error.retryable;
 }
