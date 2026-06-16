@@ -6,6 +6,7 @@
     "node": ">=24"
   },
   "type": "module",
+  "license": "MIT",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,10 +20,31 @@
   "files": [
     "dist"
   ],
+  "author": "Abdulkadir Karadas(saferias)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdulkadirkaradas/atisse.git",
+    "directory": "packages/memory-inmemory"
+  },
+  "bugs": {
+    "url": "https://github.com/abdulkadirkaradas/atisse/issues"
+  },
+  "homepage": "https://github.com/abdulkadirkaradas/atisse#readme",
+  "keywords": [
+    "llm",
+    "ai",
+    "memory",
+    "in-memory",
+    "adapter",
+    "typescript",
+    "orchestration",
+    "conversation"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
+    "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "build": "tsup"
   },
