@@ -251,6 +251,42 @@ async function abortRunCall(abort: { delayMs?: number; signal?: AbortSignal }): 
   }
 }
 
+// ── Context provider output limits ───────────────────────────────────
+const CONTEXT_MAX_MESSAGES = 50;
+const CONTEXT_MAX_CHARS = 50_000;
+
+/**
+ * Enforce character-limit on context provider results.
+ * Truncates the results array when cumulative content exceeds maxChars.
+ */
+function enforceCharLimit(
+  results: SystemMessage[],
+  maxChars: number,
+  providerId: string,
+  logger: Logger,
+  runId: string,
+): SystemMessage[] {
+  let totalChars = 0;
+  for (let i = 0; i < results.length; i++) {
+    const message = results[i];
+    if (!message) continue;
+    const content = message.content;
+    const len = typeof content === 'string' ? content.length : 0;
+    if (totalChars + len > maxChars) {
+      logger.warn('Context provider exceeded maxContentLengthChars', {
+        providerId,
+        current: totalChars + len,
+        max: maxChars,
+        runId,
+      });
+      results.length = i;
+      break;
+    }
+    totalChars += len;
+  }
+  return results;
+}
+
 /**
  * Helper 1: Steps 1–4 (INITIALIZED → CONTEXT_INJECTING → CONTEXT_INJECTED → PROMPT_COMPOSED)
  *
@@ -336,11 +372,25 @@ async function initializePipeline(
     try {
       const messages = await provider.provide(contextProviderInput);
       providerResults.push(...messages);
+
+      // Enforce contextPolicy limits per security.md §S-5
+      if (providerResults.length > CONTEXT_MAX_MESSAGES) {
+        logger.warn('Context provider exceeded maxMessagesPerProvider', {
+          providerId: provider.id,
+          count: providerResults.length,
+          max: CONTEXT_MAX_MESSAGES,
+          runId,
+        });
+        providerResults.length = CONTEXT_MAX_MESSAGES;
+      }
+
+      enforceCharLimit(providerResults, CONTEXT_MAX_CHARS, provider.id, logger, runId);
+
       eventBus.emit({
         type: 'context.loaded',
         runId,
         providerId: provider.id,
-        messageCount: messages.length,
+        messageCount: providerResults.length,
       });
     } catch (error: unknown) {
       const err =
