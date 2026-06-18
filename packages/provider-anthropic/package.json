@@ -1,6 +1,6 @@
 {
   "name": "@atisse/provider-anthropic",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=24"
