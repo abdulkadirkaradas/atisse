@@ -201,7 +201,7 @@ contextPolicy: {
 }
 ```
 
-These limits are **kernel-internal defaults and are not user-configurable in v1**. They cannot be overridden via `OrchestratorConfig`. Community feedback on whether override support is needed will be considered for v2.
+These limits are **kernel-internal defaults and are not user-configurable in v1**. They cannot be overridden via `OrchestratorConfig`. Community feedback on whether override support is needed will be considered for v1.x.x.
 
 When limits are exceeded, the kernel logs a warning and truncates — it does not throw.
 

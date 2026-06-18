@@ -55,6 +55,7 @@ private mapError(error: unknown): never {
 - [ ] `save()` is called once per `run()` at COMPLETING with `[userMessage, assistantMessage]`
 - [ ] `clear()` is idempotent — non-existent sessionId silently succeeds, never throws
 - [ ] Storage key always includes `sessionId` — never a global/shared key
+- [ ] Storage key namespace is configurable for multi-tenant deployments
 - [ ] Connection errors thrown as `ContextLoadError` (retryable)
 
 ```typescript

@@ -258,4 +258,64 @@ describe('RedisMemoryAdapter', () => {
       expect(loadKey).toBe('atisse:session:session-X');
     });
   });
+
+  // ── Custom keyPrefix ───────────────────────────────────────
+
+  describe('custom keyPrefix', () => {
+    it('should use custom keyPrefix for load() in client mode', async () => {
+      mockClient.get.mockResolvedValue(null);
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never, keyPrefix: 'custom:' });
+      await adapter.load('session-1');
+      expect(mockClient.get).toHaveBeenCalledWith('custom:session-1');
+    });
+
+    it('should use custom keyPrefix for save() in client mode', async () => {
+      mockClient.get.mockResolvedValue(null);
+      mockClient.setEx.mockResolvedValue('OK');
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never, keyPrefix: 'custom:' });
+      await adapter.save('session-1', [{ role: 'user' as const, content: 'Hello' }]);
+      expect(mockClient.setEx).toHaveBeenCalledWith('custom:session-1', 3600, expect.any(String));
+    });
+
+    it('should use custom keyPrefix for clear() in client mode', async () => {
+      mockClient.del.mockResolvedValue(1);
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never, keyPrefix: 'custom:' });
+      await adapter.clear('session-1');
+      expect(mockClient.del).toHaveBeenCalledWith('custom:session-1');
+    });
+
+    it('should use custom keyPrefix in URL mode', async () => {
+      mockClient.get.mockResolvedValue(null);
+      mockClient.connect.mockResolvedValue(undefined);
+      const adapter = new RedisMemoryAdapter({
+        url: 'redis://localhost:6379',
+        keyPrefix: 'app:session:',
+      });
+      await adapter.load('sess-1');
+      expect(mockClient.get).toHaveBeenCalledWith('app:session:sess-1');
+    });
+
+    it('should apply default prefix when keyPrefix is omitted', async () => {
+      mockClient.get.mockResolvedValue(null);
+      const adapter = new RedisMemoryAdapter({ client: mockClient as never });
+      await adapter.load('session-1');
+      expect(mockClient.get).toHaveBeenCalledWith('atisse:session:session-1');
+    });
+
+    it('should produce distinct Redis keys for different keyPrefix values with same sessionId', async () => {
+      mockClient.get.mockResolvedValue(null);
+      const adapterA = new RedisMemoryAdapter({
+        client: mockClient as never,
+        keyPrefix: 'tenant-a:',
+      });
+      const adapterB = new RedisMemoryAdapter({
+        client: mockClient as never,
+        keyPrefix: 'tenant-b:',
+      });
+      await adapterA.load('session-1');
+      await adapterB.load('session-1');
+      expect(mockClient.get).toHaveBeenNthCalledWith(1, 'tenant-a:session-1');
+      expect(mockClient.get).toHaveBeenNthCalledWith(2, 'tenant-b:session-1');
+    });
+  });
 });

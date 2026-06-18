@@ -200,4 +200,29 @@ describe('RedisMemoryAdapter + Orchestrator (integration)', () => {
     expect(save2[2]?.content).toBe('second');
     expect(save2[3]?.content).toBe('resp2');
   });
+
+  describe('custom keyPrefix', () => {
+    it('should use custom keyPrefix in integration with Orchestrator', async () => {
+      mockClient.get.mockResolvedValue(null);
+      mockClient.setEx.mockResolvedValue('OK');
+      const provider = createMockProvider();
+      provider.enqueue({ text: 'Hello!' });
+      const memory = new RedisMemoryAdapter({ client: mockClient as never, keyPrefix: 'myapp:' });
+      const orchestrator = new Orchestrator({ provider, memoryAdapter: memory });
+      await orchestrator.run({ prompt: 'Hi', sessionId: 'session-1' });
+      expect(mockClient.get).toHaveBeenCalledWith('myapp:session-1');
+    });
+
+    it('should use custom keyPrefix in URL mode with Orchestrator', async () => {
+      mockClient.get.mockResolvedValue(null);
+      mockClient.setEx.mockResolvedValue('OK');
+      mockClient.connect.mockResolvedValue(undefined);
+      const provider = createMockProvider();
+      provider.enqueue({ text: 'Hello!' });
+      const memory = new RedisMemoryAdapter({ url: 'redis://localhost:6379', keyPrefix: 'appns:' });
+      const orchestrator = new Orchestrator({ provider, memoryAdapter: memory });
+      await orchestrator.run({ prompt: 'Hi', sessionId: 'session-1' });
+      expect(mockClient.get).toHaveBeenCalledWith('appns:session-1');
+    });
+  });
 });

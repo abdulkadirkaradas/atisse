@@ -164,7 +164,7 @@ export interface ToolDefinition {
 export interface Tool extends ToolDefinition {
   execute(input: unknown): Promise<unknown>;
   // input/output typed as unknown — use Zod safeParse inside execute() for type narrowing
-  // Typed generics: v2 candidate
+  // Typed generics: v1.x.x candidate
   // Kernel wraps execute() in Promise.race against toolPolicy.toolTimeoutMs
 }
 

@@ -109,7 +109,7 @@ Consult this before proposing changes that might revisit recorded decisions.
 ## ADR-015: ContextProvider Partial Failure Is Fail-Fast
 
 **Decision:** First provider failure aborts all context loading → `RETRYING` or `FAILED`. Partial results discarded.
-**Rationale:** Explicit failure over silent partial context; `context.failed` event gives full visibility. Best-effort: v2 candidate.
+**Rationale:** Explicit failure over silent partial context; `context.failed` event gives full visibility. Best-effort: v1.x.x candidate.
 
 ---
 
@@ -123,7 +123,7 @@ Consult this before proposing changes that might revisit recorded decisions.
 ## ADR-017: Streaming and Fallback Are Forbidden Together in v1
 
 **Decision:** `stream: true` + `fallbackProvider` → `ConfigValidationError` at `run()` entry.
-**Rationale:** Mid-stream provider failure cannot be transparently recovered — consumer has partial output. v2 candidate with defined contract.
+**Rationale:** Mid-stream provider failure cannot be transparently recovered — consumer has partial output. v1.x.x candidate with defined contract.
 
 ---
 

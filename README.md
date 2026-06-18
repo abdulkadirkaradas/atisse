@@ -18,16 +18,16 @@ The gap between these two extremes is a production-ready, minimal orchestration 
 
 ## How It Compares
 
-|                           | LangChain     | Vercel AI SDK | **@atisse/core**  |
-| ------------------------- | ------------- | ------------- | ----------------- |
-| Weight                    | Heavy         | Light         | Minimal           |
-| Focus                     | Framework     | Frontend      | Backend kernel    |
-| Hidden behavior           | High          | Medium        | None              |
-| Vendor lock-in            | Yes           | Partial       | No                |
-| Production retry/fallback | Complex       | None          | First-class       |
-| Tool lifecycle            | Opaque        | Limited       | Explicit          |
-| Streaming                 | Yes           | First-class   | First-class       |
-| Testability               | Hard          | Medium        | MockProvider      |
+|                           | LangChain | Vercel AI SDK | **@atisse/core** |
+| ------------------------- | --------- | ------------- | ---------------- |
+| Weight                    | Heavy     | Light         | Minimal          |
+| Focus                     | Framework | Frontend      | Backend kernel   |
+| Hidden behavior           | High      | Medium        | None             |
+| Vendor lock-in            | Yes       | Partial       | No               |
+| Production retry/fallback | Complex   | None          | First-class      |
+| Tool lifecycle            | Opaque    | Limited       | Explicit         |
+| Streaming                 | Yes       | First-class   | First-class      |
+| Testability               | Hard      | Medium        | MockProvider     |
 
 ---
 
@@ -61,14 +61,16 @@ Behind the scenes: context was loaded, the prompt was composed, the provider was
 
 ## Packages
 
-| Package                      | Description                                      |
-| ---------------------------- | ------------------------------------------------ |
-| `@atisse/core`               | Kernel, frozen interfaces, `MockProvider`        |
-| `@atisse/provider-openai`    | OpenAI adapter (GPT-4o, GPT-4o-mini)             |
-| `@atisse/provider-anthropic` | Anthropic adapter (Claude 3.5 Sonnet, Haiku)     |
-| `@atisse/memory-inmemory`    | Reference in-memory `MemoryAdapter`              |
-| `@atisse/memory-redis`       | Redis-backed `MemoryAdapter` with TTL support    |
-| `@atisse/context-rag`        | RAG `ContextProvider` — pluggable vector store   |
+Each package has its own `README.md` with detailed API documentation, installation guides, and code examples.
+
+| Package                                                                 | Description                                    |
+| ----------------------------------------------------------------------- | ---------------------------------------------- |
+| [`@atisse/core`](./packages/core/README.md)                             | Kernel, frozen interfaces, `MockProvider`      |
+| [`@atisse/provider-openai`](./packages/provider-openai/README.md)       | OpenAI adapter (GPT-4o, GPT-4o-mini)           |
+| [`@atisse/provider-anthropic`](./packages/provider-anthropic/README.md) | Anthropic adapter (Claude 3.5 Sonnet, Haiku)   |
+| [`@atisse/memory-inmemory`](./packages/memory-inmemory/README.md)       | Reference in-memory `MemoryAdapter`            |
+| [`@atisse/memory-redis`](./packages/memory-redis/README.md)             | Redis-backed `MemoryAdapter` with TTL support  |
+| [`@atisse/context-rag`](./packages/context-rag/README.md)               | RAG `ContextProvider` — pluggable vector store |
 
 ---
 
@@ -76,6 +78,6 @@ Behind the scenes: context was loaded, the prompt was composed, the provider was
 
 - [Getting Started](docs/getting-started.md)
 - [Writing Adapters](docs/writing-adapters.md)
-- [API Reference](docs/api/)
+- **API Reference** — Run `pnpm run docs` to generate and view API documentation (will be listed under `docs/api/`)
 - [Examples](examples/)
 - [GitHub Discussions](https://github.com/abdulkadirkaradas/atisse/discussions)

@@ -133,7 +133,7 @@ export interface Logger {
 }
 // If not provided: a no-op logger is used — no output, no errors thrown
 // Always inject a Logger in production — silent failures are difficult to diagnose
-// Built-in logger implementation: V2 candidate
+// Built-in logger implementation: v1.x.x candidate
 ```
 
 ---
