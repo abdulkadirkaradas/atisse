@@ -78,6 +78,6 @@ Each package has its own `README.md` with detailed API documentation, installati
 
 - [Getting Started](docs/getting-started.md)
 - [Writing Adapters](docs/writing-adapters.md)
-- [API Reference](docs/api/)
+- **API Reference** — Run `pnpm run docs` to generate and view API documentation (will be listed under `docs/api/`)
 - [Examples](examples/)
 - [GitHub Discussions](https://github.com/abdulkadirkaradas/atisse/discussions)
