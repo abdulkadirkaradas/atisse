@@ -1158,6 +1158,318 @@ describe('Integration: Orchestrator Core Run', () => {
     });
   });
 
+  describe('Context provider output limits', () => {
+    it('truncates context messages when exceeding maxMessagesPerProvider (50)', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response with truncated context' });
+
+      const manyMessagesContextProvider: ContextProvider = {
+        id: 'many-messages',
+        async provide() {
+          return Array.from({ length: 51 }, (_, i) => ({
+            role: 'system' as const,
+            content: `Context message ${i}`,
+          }));
+        },
+      };
+
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [manyMessagesContextProvider],
+        logger: mockLogger,
+      });
+
+      await orchestrator.run({ prompt: 'test' });
+
+      const lastRequest = provider.lastRequest();
+      const systemMessages = lastRequest!.messages.filter((m) => m.role === 'system');
+      // 50 context messages (no separate system prompt configured)
+      expect(systemMessages).toHaveLength(50);
+
+      // Verify warn log was emitted
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Context provider exceeded maxMessagesPerProvider',
+        expect.objectContaining({
+          providerId: 'many-messages',
+          count: 51,
+          max: 50,
+        }),
+      );
+    });
+
+    it('truncates context content when exceeding maxContentLengthChars (50k)', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response with truncated content' });
+
+      const largeContentContextProvider: ContextProvider = {
+        id: 'large-content',
+        async provide() {
+          // Return messages totaling ~60k chars
+          return [
+            { role: 'system' as const, content: 'A'.repeat(30_000) },
+            { role: 'system' as const, content: 'B'.repeat(30_000) },
+          ];
+        },
+      };
+
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [largeContentContextProvider],
+        logger: mockLogger,
+      });
+
+      await orchestrator.run({ prompt: 'test' });
+
+      const lastRequest = provider.lastRequest();
+      const systemMessages = lastRequest!.messages.filter((m) => m.role === 'system');
+      // Should only have 1 message (the second was truncated)
+      expect(systemMessages).toHaveLength(1);
+
+      // Verify warn log was emitted
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Context provider exceeded maxContentLengthChars',
+        expect.objectContaining({
+          providerId: 'large-content',
+          current: 60_000,
+          max: 50_000,
+        }),
+      );
+    });
+
+    it('passes through context when within limits', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response with valid context' });
+
+      const normalContextProvider: ContextProvider = {
+        id: 'normal',
+        async provide() {
+          return Array.from({ length: 3 }, (_, i) => ({
+            role: 'system' as const,
+            content: `Context message ${i}`,
+          }));
+        },
+      };
+
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [normalContextProvider],
+        logger: mockLogger,
+      });
+
+      await orchestrator.run({ prompt: 'test' });
+
+      const lastRequest = provider.lastRequest();
+      const systemMessages = lastRequest!.messages.filter((m) => m.role === 'system');
+      // All 3 context messages should be present
+      expect(systemMessages).toHaveLength(3);
+
+      // Verify no warn logs about limits
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('passes through exactly 50 messages without truncation', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response with boundary messages' });
+
+      const boundaryContextProvider: ContextProvider = {
+        id: 'boundary-messages',
+        async provide() {
+          return Array.from({ length: 50 }, (_, i) => ({
+            role: 'system' as const,
+            content: `Boundary message ${i}`,
+          }));
+        },
+      };
+
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [boundaryContextProvider],
+        logger: mockLogger,
+      });
+
+      await orchestrator.run({ prompt: 'test' });
+
+      const lastRequest = provider.lastRequest();
+      const systemMessages = lastRequest!.messages.filter((m) => m.role === 'system');
+      // All 50 boundary messages should be present
+      expect(systemMessages).toHaveLength(50);
+
+      // Verify no warn logs about limits
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('passes through exactly 50,000 chars without truncation', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response with boundary content' });
+
+      const boundaryContentContextProvider: ContextProvider = {
+        id: 'boundary-content',
+        async provide() {
+          return [
+            { role: 'system' as const, content: 'A'.repeat(25_000) },
+            { role: 'system' as const, content: 'B'.repeat(25_000) },
+          ];
+        },
+      };
+
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [boundaryContentContextProvider],
+        logger: mockLogger,
+      });
+
+      await orchestrator.run({ prompt: 'test' });
+
+      const lastRequest = provider.lastRequest();
+      const systemMessages = lastRequest!.messages.filter((m) => m.role === 'system');
+      // Both messages should be present (50k total)
+      expect(systemMessages).toHaveLength(2);
+
+      // Verify no warn logs about limits
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('truncates single message exceeding 50k chars to zero messages', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response with oversized single message' });
+
+      const oversizedContextProvider: ContextProvider = {
+        id: 'oversized-single',
+        async provide() {
+          return [
+            { role: 'system' as const, content: 'X'.repeat(51_000) },
+          ];
+        },
+      };
+
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [oversizedContextProvider],
+        logger: mockLogger,
+      });
+
+      await orchestrator.run({ prompt: 'test' });
+
+      const lastRequest = provider.lastRequest();
+      const systemMessages = lastRequest!.messages.filter((m) => m.role === 'system');
+      // The single message exceeds the limit, so no system messages
+      expect(systemMessages).toHaveLength(0);
+
+      // Verify warn log was emitted
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Context provider exceeded maxContentLengthChars',
+        expect.objectContaining({
+          providerId: 'oversized-single',
+          current: 51_000,
+          max: 50_000,
+        }),
+      );
+    });
+
+    it('truncates cumulative messages from multiple context providers', async () => {
+      const provider = createProvider();
+      provider.enqueue({ text: 'Response with cumulative overflow' });
+
+      const firstContextProvider: ContextProvider = {
+        id: 'first-provider',
+        async provide() {
+          return Array.from({ length: 30 }, (_, i) => ({
+            role: 'system' as const,
+            content: `First provider message ${i}`,
+          }));
+        },
+      };
+
+      const secondContextProvider: ContextProvider = {
+        id: 'second-provider',
+        async provide() {
+          return Array.from({ length: 30 }, (_, i) => ({
+            role: 'system' as const,
+            content: `Second provider message ${i}`,
+          }));
+        },
+      };
+
+      const mockLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+
+      const orchestrator = new Orchestrator({
+        provider,
+        contextProviders: [firstContextProvider, secondContextProvider],
+        logger: mockLogger,
+      });
+
+      await orchestrator.run({ prompt: 'test' });
+
+      const lastRequest = provider.lastRequest();
+      const systemMessages = lastRequest!.messages.filter((m) => m.role === 'system');
+      // Combined 60 messages truncated to max 50
+      expect(systemMessages).toHaveLength(50);
+
+      // First 30 from first provider, next 20 from second provider
+      expect(systemMessages[0]!.content).toBe('First provider message 0');
+      expect(systemMessages[29]!.content).toBe('First provider message 29');
+      expect(systemMessages[30]!.content).toBe('Second provider message 0');
+      expect(systemMessages[49]!.content).toBe('Second provider message 19');
+
+      // Verify warn log was emitted for the overflow on the second provider
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Context provider exceeded maxMessagesPerProvider',
+        expect.objectContaining({
+          providerId: 'second-provider',
+          count: 60,
+          max: 50,
+        }),
+      );
+    });
+  });
+
   describe('Memory error handling', () => {
     it('propagates error when memory load fails', async () => {
       const provider = createProvider();
