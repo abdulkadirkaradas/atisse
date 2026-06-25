@@ -20,10 +20,10 @@ Read these before starting ANY task, in order:
 
 ## Conditional Pre-Task Reading
 
-| When... | File |
-|---|---|
-| Any feature touching execution flow | `rules/architecture.md` |
-| Any interface or type change | `rules/interfaces-core.md` + `rules/interfaces-runtime.md` |
+| When...                             | File                                                       |
+| ----------------------------------- | ---------------------------------------------------------- |
+| Any feature touching execution flow | `rules/architecture.md`                                    |
+| Any interface or type change        | `rules/interfaces-core.md` + `rules/interfaces-runtime.md` |
 
 ---
 
@@ -31,6 +31,23 @@ Read these before starting ANY task, in order:
 
 All other files are loaded on demand. Consult `rules/index.md` for the full
 routing table — which task triggers which file.
+
+---
+
+## Stale Documentations
+
+`.opencode/stale-docs` includes legacy documentation that is no longer maintained. It is included here for reference only.
+Stay away from these files unless especially instructed to read them.
+They may contain outdated information and should not be relied upon for current practices or procedures.
+
+The latest documents/instructions can be found at the following locations:
+| Path                          | Description          |
+| ----------------------------- | -------------------- |
+| `./opencode/agents`           | Agent Profiles       |
+| `./opencode/rules`            | Rules                |
+| `./opencode/workflows`        | Workflows            |
+| `./opencode/milestones`       | Implementation Plans |
+| `./opencode/analysis-reports` | Analysis Reports     |
 
 ---
 
