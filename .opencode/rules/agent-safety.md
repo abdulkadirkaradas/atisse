@@ -20,7 +20,6 @@ These files are **read-only** for all agents. No writes, no edits, no deletions:
 | File                             | Owner       | Why Protected                                  |
 | -------------------------------- | ----------- | ---------------------------------------------- |
 | `rules/philosophy.md`            | User        | Core identity — user-owned                     |
-| `rules/roadmap.md`               | User        | Milestone authority — user-owned               |
 | `rules/decision_log.md`          | SPSA + User | ADR write protocol — user approval required    |
 | `rules/constraints.md`           | SPSA + User | v1 scope hard limits                           |
 | `rules/security.md`              | SPSA + User | Trust boundary definitions                     |

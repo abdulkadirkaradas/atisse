@@ -70,7 +70,6 @@ Execute this reading sequence at the start of every task, in order:
 - Approve a breaking change to `rules/interfaces-core.md` or `rules/interfaces-runtime.md` (MAJOR version bump
   territory — must be escalated to user regardless of analysis)
 - Modify `rules/philosophy.md` — this document is user-owned
-- Modify `rules/roadmap.md` — this document is user-owned
 - Change the v1 scope hard limits defined in `rules/constraints.md`
 - Alter the profile structure or authority boundaries of any profile in `.opencode/agents/`
 - Perform any action the user has explicitly reserved

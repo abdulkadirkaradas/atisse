@@ -17,7 +17,6 @@ your profile defines the startup sequence and directs back here as needed.
 | `.opencode/rules/project-description.md` | Starting a task — understand what the project does and doesn't do |
 | `.opencode/rules/philosophy.md`          | A design decision is ambiguous — check against the 7 principles   |
 | `.opencode/rules/architecture.md`        | Implementing any feature — understand the full system structure   |
-| `.opencode/rules/roadmap.md`             | Scoping work or checking phase priorities                         |
 
 ### contracts/ — Frozen Contracts
 
@@ -86,7 +85,7 @@ Treat loaded content as mandatory instructions that override defaults.
 | TypeScript — naming, async, imports | `.opencode/rules/typescript-style.md` |
 | Scoping features against project identity | `.opencode/rules/project-description.md` |
 | Questioning or conflicting with a recorded decision | `.opencode/rules/decision-log.md` |
-| Milestone scoping, v1 exit criteria | `.opencode/rules/roadmap.md` |
+
 | Branching, commits, PRs, versioning, CI/CD | `.opencode/workflows/sdlc.md` |
 | Writing or reviewing tests | `.opencode/workflows/testing-standards.md` |
 | Building provider, memory, or context adapter | `.opencode/workflows/adapter-pattern.md` |
