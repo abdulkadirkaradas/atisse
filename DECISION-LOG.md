@@ -335,7 +335,7 @@ Stop (`AGENTS.md`) — surface it, don't silently override it.
 
 ## ADR-039: Pipeline Internal Architecture — `RoundExecutionStrategy`
 
-**References:** ADR-006, ADR-030, ADR-034; `claude-technical-analysis.md` Finding 1.3; `chatgpt-technical-analysis.md` §2.1–2.2; `06-grp-pipeline-b1.md`
+**References:** ADR-006, ADR-030, ADR-034; `claude-technical-analysis.md` Finding 1.3; `chatgpt-technical-analysis.md` §2.1–2.2; `_archive/000-superseded-b1-pipeline-decomposition.md`; `M06-B1A-pipeline-generation-engine.md`–`M10-B1E-pipeline-streaming-engine.md`; `M12-B15-round-execution-strategy.md`
 
 **Decision:** Three-part ruling on pipeline internals (no public API change):
 
@@ -352,7 +352,7 @@ Stop (`AGENTS.md`) — surface it, don't silently override it.
 
 **Consequence:**
 
-- `06-grp-pipeline-b1.md` re-organized into B1A–B1E sub-milestones (content preserved).
-- New B15 milestone (`11-grp-pipeline-b15.md`) added to the v1.1.0 backlog, sequenced after B1A–B1E.
+- `_archive/000-superseded-b1-pipeline-decomposition.md` re-organized into B1A–B1E sub-milestones (`M06-B1A`–`M10-B1E`; content preserved).
+- New B15 milestone (`M12-B15-round-execution-strategy.md`) added to the v1.1.0 backlog, sequenced after B1A–B1E.
 - No changes to `interfaces-core.md` or `interfaces-runtime.md` — strategy types are internal to `pipeline/`.
 - Classification: NOT a user-facing breaking change.
