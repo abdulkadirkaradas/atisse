@@ -1,28 +1,53 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "autoupdate": true,
-  "instructions": [
-    ".opencode/rules/agent-safety.md",
-    "AGENTS.md",
-    ".opencode/rules/index.md"
-  ],
+  "instructions": ["AGENTS.md"],
   "mcp": {
     "handoff-package": {
       "type": "local",
       "command": ["npx", "tsx", ".opencode/tools/handoff-package/server.ts"]
     }
   },
-  "tools": {
-    "handoff-package": true
-  },
-  "watcher": {
-    "ignore": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"]
+  "tools": { "handoff-package": true },
+  "watcher": { "ignore": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"] },
+  "permission": {
+    "edit": {
+      "*": "ask",
+      "packages/core/src/interfaces.ts": "deny",
+      ".opencode/skill/constraints/**": "deny",
+      ".opencode/skill/security/**": "deny",
+      ".opencode/skill/principles/**": "deny",
+      ".opencode/agent/*.md": "deny",
+      "DECISION-LOG.md": "ask"
+    },
+    "bash": {
+      "*": "ask",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git push +*": "deny",
+      "git push *--force*": "deny",
+      "git reset --hard*": "deny",
+      "npm publish*": "deny",
+      "pnpm publish*": "deny",
+      "pnpm changeset publish*": "deny",
+      "yarn publish*": "deny",
+      "npx changeset publish*": "deny",
+      "rm -rf *": "deny",
+      "kill -9 *": "deny",
+      "kill *": "deny",
+      "pkill*": "deny",
+      "killall*": "deny",
+      "pm2 *": "deny",
+      "systemctl *": "deny",
+      "gh workflow run*": "deny",
+      "gh run*": "deny"
+    }
   },
   "agent": {
     "spsa": {
-      "description": "Senior Principal Software Architect. Architectural review, interface contract decisions, security boundary assessment, ADR evaluation, and final approval of SPBED output.",
+      "description": "Senior Principal Software Architect. Architectural review, interface contract decisions, security boundary assessment, ADR evaluation, final approval of SPBED output.",
       "mode": "subagent",
-      "prompt": "{file:.opencode/agents/spsa.md}",
+      "prompt": "{file:.opencode/agent/spsa.md}",
       "permission": {
         "read": "allow",
         "grep": "allow",
@@ -31,48 +56,118 @@
         "websearch": "allow",
         "webfetch": "allow",
         "question": "allow",
-        "bash": "allow",
+        "bash": {
+          "*": "allow",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push +*": "deny",
+          "git push *--force*": "deny",
+          "git reset --hard*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "pnpm changeset publish*": "deny",
+          "yarn publish*": "deny",
+          "npx changeset publish*": "deny",
+          "rm -rf *": "deny",
+          "kill -9 *": "deny",
+          "kill *": "deny",
+          "pkill*": "deny",
+          "killall*": "deny",
+          "pm2 *": "deny",
+          "systemctl *": "deny",
+          "gh workflow run*": "deny",
+          "gh run*": "deny"
+        },
         "write": "ask",
-        "edit": "ask",
-        "skill": {
-          "git-commit": "deny"
+        "edit": {
+          "*": "ask",
+          "packages/core/src/interfaces.ts": "deny",
+          ".opencode/skill/constraints/**": "deny",
+          ".opencode/skill/security/**": "deny",
+          ".opencode/skill/principles/**": "deny",
+          ".opencode/agent/*.md": "deny"
         }
       }
     },
     "spbed": {
-      "description": "Senior Principal Back-End Developer. Implementing features, writing adapters, refactoring code, writing tests, and producing TypeScript output within contract boundaries.",
+      "description": "Senior Principal Back-End Developer. Implements features, adapters, refactors, tests within contract boundaries.",
       "mode": "subagent",
-      "prompt": "{file:.opencode/agents/spbed.md}",
+      "prompt": "{file:.opencode/agent/spbed.md}",
       "permission": {
         "read": "allow",
         "grep": "allow",
         "glob": "allow",
         "list": "allow",
-        "bash": "allow",
-        "write": "allow",
-        "edit": "allow",
         "question": "allow",
-        "skill": {
-          "git-commit": "allow"
-        }
+        "bash": {
+          "*": "allow",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push +*": "deny",
+          "git push *--force*": "deny",
+          "git reset --hard*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "pnpm changeset publish*": "deny",
+          "yarn publish*": "deny",
+          "npx changeset publish*": "deny",
+          "rm -rf *": "deny",
+          "kill -9 *": "deny",
+          "kill *": "deny",
+          "pkill*": "deny",
+          "killall*": "deny",
+          "pm2 *": "deny",
+          "systemctl *": "deny",
+          "gh workflow run*": "deny",
+          "gh run*": "deny"
+        },
+        "write": "allow",
+        "edit": {
+          "*": "allow",
+          "packages/core/src/interfaces.ts": "deny",
+          ".opencode/skill/constraints/**": "deny",
+          ".opencode/skill/security/**": "deny",
+          ".opencode/skill/principles/**": "deny",
+          ".opencode/agent/*.md": "deny",
+          "DECISION-LOG.md": "deny"
+        },
+        "skill": { "git-workflow": "allow" }
       }
     },
     "spqae": {
-      "description": "Senior Principal QA Engineer. Evaluating test sufficiency, reviewing coverage thresholds, identifying missing test scenarios, and assessing test structure.",
+      "description": "Senior Principal QA Engineer. Test sufficiency, coverage thresholds, missing scenarios, test structure.",
       "mode": "subagent",
-      "prompt": "{file:.opencode/agents/spqae.md}",
+      "prompt": "{file:.opencode/agent/spqae.md}",
       "permission": {
         "read": "allow",
         "grep": "allow",
         "glob": "allow",
         "list": "allow",
-        "bash": "allow",
         "question": "allow",
+        "bash": {
+          "*": "allow",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push +*": "deny",
+          "git push *--force*": "deny",
+          "git reset --hard*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "pnpm changeset publish*": "deny",
+          "yarn publish*": "deny",
+          "npx changeset publish*": "deny",
+          "rm -rf *": "deny",
+          "kill -9 *": "deny",
+          "kill *": "deny",
+          "pkill*": "deny",
+          "killall*": "deny",
+          "pm2 *": "deny",
+          "systemctl *": "deny",
+          "gh workflow run*": "deny",
+          "gh run*": "deny"
+        },
         "write": "deny",
-        "edit": "deny",
-        "skill": {
-          "git-commit": "deny"
-        }
+        "edit": "deny"
       }
     }
   }
