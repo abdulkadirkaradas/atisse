@@ -21,20 +21,20 @@
     "docs": "typedoc --out docs/api packages/core/src/index.ts"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0",
+    "@changesets/cli": "^2.31.1",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.9.3",
-    "@typescript-eslint/eslint-plugin": "^8.61.1",
-    "@typescript-eslint/parser": "^8.61.1",
-    "@vitest/coverage-v8": "^4.1.9",
-    "esbuild": "^0.28.1",
-    "eslint": "^10.5.0",
+    "@types/node": "^25.9.5",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.8.4",
+    "prettier": "^3.9.6",
     "tsup": "^8.5.1",
-    "typedoc": "^0.28.19",
+    "typedoc": "^0.28.20",
     "typescript": "^5.9.3",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.9"
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
   }
 }
