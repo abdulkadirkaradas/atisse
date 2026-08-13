@@ -102,8 +102,7 @@ type Message =
   | { role: 'tool'; content: string | MessageContent[]; toolCallId: string; name: string }; // both required — links to originating ToolCall
 
 type MessageContent =
-  | { type: 'text'; text: string }
-  | { type: 'image'; url: string; mimeType: string };
+  { type: 'text'; text: string } | { type: 'image'; url: string; mimeType: string };
 type SystemMessage = Extract<Message, { role: 'system' }>; // enforces the ContextProvider trust boundary at compile time
 ```
 

@@ -17,7 +17,7 @@ dimension; `git-workflow` before committing.
 refactor without changing observable behavior; add TSDoc to any file, including
 `interfaces.ts`, as long as the comment clarifies documented behavior rather than implying
 a new one (a comment that adds an undocumented constraint — e.g. "must be globally
-unique" — _is_ an interface change, escalate it); create files per the location rules in
+unique" — *is* an interface change, escalate it); create files per the location rules in
 `AGENTS.md`; write/modify tests; add new `OrchestratorError` subclasses that extend the
 existing hierarchy without altering it; add new adapter packages; run lint/typecheck/test
 freely.

@@ -17,7 +17,7 @@ for the human reading along.
 {
   "schema_version": "1.0",
   "task_id":        "<uuid-v4, generated once, never regenerated across handoffs>",
-  "task_label":     "<PROFILE>-<kebab_slug_max5words>-<4digit_int>",
+  "task_label":     "<PROFILE>-<kebab-case-slug-max-5-words>-<4-digit-int>",
   "source":         "SPSA | SPBED | SPQAE",
   "destination":    "SPSA | SPBED | SPQAE | USER",
   "routing_reason": "<ACTION>.<DOMAIN>",
