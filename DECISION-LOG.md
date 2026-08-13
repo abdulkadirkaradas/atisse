@@ -356,3 +356,28 @@ Stop (`AGENTS.md`) — surface it, don't silently override it.
 - New B15 milestone (`M12-B15-round-execution-strategy.md`) added to the v1.1.0 backlog, sequenced after B1A–B1E.
 - No changes to `interfaces-core.md` or `interfaces-runtime.md` — strategy types are internal to `pipeline/`.
 - Classification: NOT a user-facing breaking change.
+
+---
+
+## ADR-040: Single esbuild Version Enforced via Workspace Override
+
+**Decision:** Pin `esbuild` to a single version across the monorepo by tightening the workspace override in `pnpm-workspace.yaml` from `esbuild: ^0.28.1` to `esbuild: ^0.28.2`, aligning it with the root devDependency (`esbuild: ^0.28.2` in `package.json`, which requires no change). Keep `allowBuilds: esbuild: true` as-is.
+
+**Rationale:** Three factors converge toward this decision:
+
+1. **Security advisories (CVE motivation):** The esbuild dependency graph is exposed to two advisories patched in `0.28.1`:
+
+   - `GHSA-g7r4-m6w7-qqqr` — Windows dev-server path traversal: arbitrary file read when serving from `servedir` via backslash-based traversal. Affected `>=0.27.3 <0.28.1`, patched in `0.28.1`. This is the primary motivation and remains active.
+   - `GHSA-gv7w-rqvm-qjhr` — Deno binary integrity: the Deno module downloads its native binary without SHA-256 verification, enabling remote code execution via a compromised `NPM_CONFIG_REGISTRY`. Affected `<=0.28.0`, patched in `0.28.1`. (Advisory subsequently withdrawn upstream on 2026-06-17 because the affected package was misidentified — recorded here for completeness; the decision does not depend on it.)
+
+2. **Single-version enforcement:** `tsup@8.5.1` declares `esbuild: ^0.27.0`, which does NOT intersect the 0.28.x range. Without the override, pnpm hoists `0.28.2` at the root and additionally installs a nested vulnerable `0.27.7` under `tsup` — two esbuild versions, one of them still affected. `vite@8.2.1` declares peer `^0.27.0 || ^0.28.0` and `bundle-require@5.1.0` declares peer `>=0.18`, so both accept the overridden single version. The override forces every consumer onto the patched `0.28.x` line.
+
+3. **`allowBuilds` is required, not optional:** pnpm 11 blocks dependency build scripts by default. esbuild ships `postinstall: node install.js` to fetch and verify its platform-specific native binary; without `allowBuilds: esbuild: true` the binary is never installed and esbuild fails at runtime.
+
+**Consequence:**
+
+- `pnpm-workspace.yaml` — `overrides.esbuild` tightened from `^0.28.1` to `^0.28.2` (single line).
+- `package.json` — unchanged (`esbuild: ^0.28.2` already declared).
+- `pnpm-lock.yaml` — regenerated via `pnpm install --lockfile-only`; lockfile now records `overrides.esbuild: ^0.28.2` and propagates the specifier to the peer-dependency metadata of `bundle-require@5.1.0` and `vite@8.2.1`; exactly one `esbuild@0.28.2` resolution (packages entry + snapshot), no version churn.
+- Verification: `pnpm why esbuild` reports exactly one version (`0.28.2`); `pnpm typecheck`, `pnpm lint`, and `pnpm test` all pass.
+- Classification: NOT a breaking change (config-only; dependency resolution tightened to a single patched version).
