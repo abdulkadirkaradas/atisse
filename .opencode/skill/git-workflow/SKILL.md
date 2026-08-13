@@ -7,19 +7,55 @@ compatibility: opencode
 
 # Git workflow
 
-## Branching and commits
+## Branching
 
-Branch: `{feat|fix|chore|docs|test|refactor}/<short-description>`. Commits: Conventional
-Commits, `<type>(<scope>): <description>` — scopes are `core`, `retry`, `streaming`,
-`hooks`, `events`, `tools`, `memory`, `adapter`, `deps`. Append `!` after type/scope for a
-breaking change (`feat!:`). `main` is squash-merged, so feature-branch commit hygiene
-matters less than the final squashed message.
+Branch: `{feat|fix|chore|docs|test|refactor}/<short-description>`. `main` is squash-merged,
+so per-commit hygiene shapes the final squashed PR message more than long-term branch
+history — do it properly anyway, since it's what reviewers read during the PR.
 
-**Committing atomically:** split unrelated changes — even within the same file — into
-separate commits by SRP. Every commit lists the absolute file paths it touches, for
-traceability. In plan mode, produce the prioritized commit list and stop for verification
-before touching git; in build mode, execute the list sequentially without waiting for
-confirmation between commits — but never touch files outside build mode.
+## Committing
+
+**Mode gate — check first, every time, before touching git or a file:**
+`[CURRENT MODE: PLAN MODE]` → analyze the diff and output the commit plan below, then
+**stop** — no git commands, no file edits. `[CURRENT MODE: BUILD MODE]` → execute the
+plan's commits sequentially, no confirmation needed between them, but never touch a file
+the plan didn't already list. No mode stated → treat as PLAN MODE (the safe default).
+
+**Atomicity (SRP):** split unrelated changes — even within the same file — into separate
+commits. **Ordering:** a prerequisite commit (a `refactor`/`chore` the feature depends on)
+is committed _before_ the commit that depends on it, never after.
+
+**Type** — Conventional Commits, `<type>(<scope>): <description>`; scopes are `core`,
+`retry`, `streaming`, `hooks`, `events`, `tools`, `memory`, `adapter`, `deps`.
+
+| Type       | Use for                            |
+| ---------- | ---------------------------------- |
+| `feat`     | new capability                     |
+| `fix`      | resolves a bug or broken behavior  |
+| `refactor` | restructuring, no behavior change  |
+| `style`    | formatting only, no meaning change |
+| `test`     | adding or correcting tests         |
+| `chore`    | build/config/dependency upkeep     |
+| `docs`     | documentation only                 |
+
+Breaking change: append `!` right after type/scope — `feat!:` — never `feat: breaking
+change!` or `feat (breaking): ...`.
+
+**File paths are relative to the project root, never absolute** — `packages/core/src/
+profile.ts`, never `/home/<user>/.../packages/core/src/profile.ts`. Every commit lists
+every relative path it touches — "modified source files" is not traceability.
+
+**Plan output format** — exactly this structure, no conversational filler:
+
+```markdown
+### [Type]: [Subject]
+
+**Description:** what and why (+ breaking-change details if applicable)
+**Files:**
+
+- path/one
+- path/two
+```
 
 ## Pull requests
 
