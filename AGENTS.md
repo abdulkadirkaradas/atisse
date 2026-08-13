@@ -24,6 +24,15 @@ Full rationale for these lives in the `principles` skill — load it before push
 
 New code: `packages/{core|provider-<name>|memory-<name>|context-<name>}/src/`. Tests mirror source under `tests/unit/` (adapter-local) or `packages/core/tests/integration/` (cross-cutting). Docs: `docs/`. Examples: `examples/{n}-{name}/`.
 
+## When multiple approaches seem valid, decide in this order
+
+1. Does it violate `principles`? → reject.
+2. Does it violate `constraints`? → reject.
+3. Does it break `interfaces`? → reject; propose a backward-compatible alternative instead.
+4. Is it DRY — does an existing utility already do this (`executeWithRetry`, `runHooks`)? → reuse it.
+5. Is it testable in isolation? → prefer the option that is.
+6. Is it minimal? → prefer the simpler implementation.
+
 ## Skills
 
 This project ships domain skills under `.opencode/skill/`. Each one's frontmatter description tells you when it's relevant — you don't need to pre-read them, load one when a task matches its description. Current catalog: `principles`, `architecture`, `interfaces`, `errors`, `code-standards`, `api-design`, `security`, `constraints`, `testing`, `adapter-pattern`, `hooks-events`, `observability`, `git-workflow`, `handoff-protocol`.
@@ -40,7 +49,7 @@ Prior architectural decisions are recorded in `DECISION-LOG.md` (append-only, gr
 
 ## Hard stops (stop and ask, don't guess)
 
-- Any edit to a protected file: `packages/core/src/interfaces.ts`, the `constraints`/`security`/`principles` skills, `DECISION-LOG.md`, or an agent profile. `opencode.json` is configured to **block** (deny, or ask-for-user-approval for SPSA's `DECISION-LOG.md`) these paths via edit — but treat it as a guard, not a guarantee: it only covers the edit/write/patch tool family (a `bash` command like `sed -i` routes around it entirely), and `edit: deny` itself has had real reliability bug reports upstream. The actual backstop is still: stop and get an explicit user decision.
+- Any edit to a protected file: `packages/core/src/interfaces.ts`, the `constraints`/`security`/`principles` skills, `DECISION-LOG.md`, or an agent profile. `opencode.json` is configured to **deny** these paths via `edit` for the subagents — but treat it as a guard, not a guarantee: it only covers the edit/write/patch tool family (a `bash` command like `sed -i` routes around it entirely), and `edit: deny` itself has had real reliability bug reports upstream. The actual backstop is still: stop and get an explicit user decision.
 - Any new **runtime** dependency in `packages/core`.
 - Any destructive command: publish, `git push --force`/`-f`, `git reset --hard`, `rm -rf`, process `kill`/`systemctl`, CI triggers. `opencode.json` denies these for the subagents — this is a **best-effort prefix-match guard, not a sandbox**, evadable by reordering args, `bash -c`, or aliases. Treat the deny as a tripwire, not a guarantee: if one of these becomes genuinely necessary, stop and ask, don't look for the gap in the pattern.
 - Ambiguous architectural impact that can't be resolved from the skills above — say so explicitly rather than guessing.
