@@ -23,8 +23,8 @@ before merging, not after.
 -1'`, not `'invalid value'`.
 4. **Optional config uses `Partial<T>`.** A user changing one field of `RetryPolicy` never
    has to restate the other three.
-5. **Pit of success.** Defaults (see `principles`) must be production-safe — a user who
-   never reads the docs shouldn't ship something broken.
+5. **Pit of success.** Defaults (see `interfaces` — `RetryPolicy`/`TimeoutPolicy`/`ToolPolicy`)
+   must be production-safe — a user who never reads the docs shouldn't ship something broken.
 
 ## Naming
 

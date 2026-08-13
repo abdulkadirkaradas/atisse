@@ -25,7 +25,8 @@ changes with the workspace, not with design intent, so it's kept separate from t
 4. **Kernel, not framework** — if a feature requires the system to _decide_ something on
    the user's behalf (plan, chain steps, reason autonomously), it doesn't belong here.
 5. **Production-ready defaults** — a developer who ships without reading the docs should
-   still get safe reliability behavior (see default policy values in the `constraints` skill).
+   still get safe reliability behavior (concrete values are on the policy interfaces in the
+   `interfaces` skill — `RetryPolicy`, `TimeoutPolicy`, `ToolPolicy`).
 6. **Config over code** — behavior comes from config objects and profiles, not subclassing
    or method overrides.
 7. **Small core, large ecosystem** — core stays small and stable; growth happens through
