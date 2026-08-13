@@ -77,3 +77,21 @@ cross-session isolation (`load('session-A')` never returns session-B data) ·
 tool names, unknown profile key → all `ConfigValidationError`.
 
 **Not tested:** private methods/internal state, third-party SDK behavior, framework code.
+
+## Retry test pattern (fake timers)
+
+```typescript
+provider
+  .enqueue({ error: new ProviderRateLimitError('429', 50) })
+  .enqueue({ error: new ProviderRateLimitError('429', 50) })
+  .enqueue({ text: 'Success on attempt 3' });
+vi.useFakeTimers();
+const result = orchestrator.run({ prompt: 'test' });
+await vi.runAllTimersAsync(); // advances backoff delays without wall-clock waiting
+expect(await result).toMatchObject({ text: 'Success on attempt 3' });
+expect(provider.wasCalledTimes(3)).toBe(true);
+vi.useRealTimers(); // always restore, even on assertion failure
+```
+
+A non-retryable error (e.g. `ProviderAuthError`) needs no fake timers — assert
+`wasCalledTimes(1)` and that the `run()` rejection is the same error type.

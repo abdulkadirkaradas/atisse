@@ -47,6 +47,9 @@ about the external system — only the interface (see `interfaces` skill for exa
 - `input.prompt` may be used for retrieval but **must never** be forwarded verbatim as
   `role: 'system'` content — that's a trust-boundary violation (`security` skill S-2, S-6).
   Use it to query, then return the provider's own retrieved content.
+- Content pulled from an untrusted source (web search results, third-party API responses)
+  is sanitized before it's mapped to `role: 'system'` — the provider vouches for what it
+  returns to the pipeline.
 - Distinguish `ContextLoadError` (infrastructure — store unreachable) from
   `ContextProviderError` (business logic — e.g. embedding service returned an unexpected
   shape) — both retryable, but the distinction matters for alerting.

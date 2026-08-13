@@ -89,6 +89,11 @@ Node is single-threaded; "concurrency" here means multiple `run()` calls on the 
 Import order (ESLint-enforced): node built-ins → external packages (type-only preferred) →
 internal contracts (`interfaces.ts`, `errors.ts`) → same-layer internal → relative imports.
 
+File structure, in order: node built-ins → external imports (type-only preferred) →
+internal imports (types first, then values) → constants (`SCREAMING_SNAKE`) → local
+types/interfaces (not exported) → the main export → unexported helper functions.
+
 ESLint: `no-explicit-any`, `no-non-null-assertion`, `consistent-type-imports`,
-`no-floating-promises`, `no-misused-promises` all `error`; `no-console` `warn`.
+`no-floating-promises`, `no-misused-promises`, `await-thenable`, `prefer-const`, `no-var`
+all `error`; `no-console` `warn`.
 Prettier: single quotes, trailing commas, 100-char width, 2-space tabs.
