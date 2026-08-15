@@ -56,8 +56,29 @@
       "description": "Senior Principal Software Architect. Architectural review, interface contract decisions, security boundary assessment, ADR evaluation, final approval of SPBED output.",
       "mode": "subagent",
       "prompt": "{file:.opencode/agent/spsa.md}",
-      "bash": {
-        "*": "allow"
+      "permission": {
+        "bash": {
+          "*": "allow",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push +*": "deny",
+          "git push *--force*": "deny",
+          "git reset --hard*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "pnpm changeset publish*": "deny",
+          "yarn publish*": "deny",
+          "npx changeset publish*": "deny",
+          "rm -rf *": "deny",
+          "kill -9 *": "deny",
+          "kill *": "deny",
+          "pkill*": "deny",
+          "killall*": "deny",
+          "pm2 *": "deny",
+          "systemctl *": "deny",
+          "gh workflow run*": "deny",
+          "gh run*": "deny"
+        }
       }
     },
     "spbed": {
@@ -66,7 +87,26 @@
       "prompt": "{file:.opencode/agent/spbed.md}",
       "permission": {
         "bash": {
-          "*": "allow"
+          "*": "allow",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push +*": "deny",
+          "git push *--force*": "deny",
+          "git reset --hard*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "pnpm changeset publish*": "deny",
+          "yarn publish*": "deny",
+          "npx changeset publish*": "deny",
+          "rm -rf *": "deny",
+          "kill -9 *": "deny",
+          "kill *": "deny",
+          "pkill*": "deny",
+          "killall*": "deny",
+          "pm2 *": "deny",
+          "systemctl *": "deny",
+          "gh workflow run*": "deny",
+          "gh run*": "deny"
         },
         "write": "allow",
         "edit": {
@@ -87,7 +127,26 @@
       "prompt": "{file:.opencode/agent/spqae.md}",
       "permission": {
         "bash": {
-          "*": "allow"
+          "*": "allow",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push +*": "deny",
+          "git push *--force*": "deny",
+          "git reset --hard*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "pnpm changeset publish*": "deny",
+          "yarn publish*": "deny",
+          "npx changeset publish*": "deny",
+          "rm -rf *": "deny",
+          "kill -9 *": "deny",
+          "kill *": "deny",
+          "pkill*": "deny",
+          "killall*": "deny",
+          "pm2 *": "deny",
+          "systemctl *": "deny",
+          "gh workflow run*": "deny",
+          "gh run*": "deny"
         },
         "write": "deny",
         "edit": "deny"
