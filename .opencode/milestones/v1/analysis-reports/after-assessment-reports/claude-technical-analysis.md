@@ -16,23 +16,33 @@
 ### 1.1 A1 (Redis Atomic Writes) — Connection Isolation Defect
 
 - **Plan reviewed:** `.opencode/milestones/v1/v1.0.2/05-grp-redis.md`
-- **Issue:** The proposed fix calls `this.client.watch(key)` directly on the shared `RedisMemoryAdapter` client instance, then proceeds to `multi()`/`exec()`. In `node-redis` v4/v5, the default client multiplexes all commands over a single connection, and `WATCH` is connection-scoped state. If two concurrent `save()` calls share this same client (the normal runtime condition this fix is meant to address), their `WATCH` calls can interleave on the same underlying connection, corrupting the optimistic-lock guarantee the transaction depends on.
-- **Evidence:** This is a documented `node-redis` pitfall (see `redis/node-redis` issues #2613, #559, and the official "Isolated Execution" guide, which explicitly recommends `client.executeIsolated()` whenever `WATCH` is combined with concurrent callers sharing one client).
+- **Issue:** The proposed fix calls `this.client.watch(key)` directly on the shared `RedisMemoryAdapter` client instance, then proceeds to `multi()`/`exec()`. In `node-redis` (v4–v6), the default client multiplexes all commands over a single connection, and `WATCH` is connection-scoped state. If two concurrent `save()` calls share this same client (the normal runtime condition this fix is meant to address), their `WATCH` calls can interleave on the same underlying connection, corrupting the optimistic-lock guarantee the transaction depends on. Isolation must therefore happen on a dedicated connection — in v6 via `RedisClientPool.execute()`, since the v4-era `client.executeIsolated()` no longer exists in `redis@^6.0.0`.
+- **Evidence:** This is a documented `node-redis` pitfall (see `redis/node-redis` issues #2613, #559, and the official "Isolated Execution" guide). The v4→v5 migration guide replaced the v4 "Isolation Pool" with the `RedisClientPool` class; in v6 the equivalent of v4's `executeIsolated()` is `RedisClientPool.execute()`, which acquires a dedicated connection and returns it via `#returnClient()` (see ADR-041). Additionally, `_executeMulti` (`@redis/client@6.2.1` `lib/client/index.js:1318-1319`) throws `WatchError` on WATCH abort instead of returning `null`.
 - **Impact if unaddressed:** The fix may not reliably eliminate the original race condition (Finding 2.1 in the source technical-analysis-report) under real concurrent load — it could appear to pass single-threaded tests while still losing data in production under concurrency.
-- **Remediation:** Replace the direct `this.client.watch(key)` call with:
+- **Remediation:** Replace the direct `this.client.watch(key)` call with a `RedisClientPool.execute()` transaction — the v4-era `executeIsolated()` no longer exists in `redis@^6.0.0`, and `_executeMulti` throws `WatchError` on WATCH abort rather than returning `null`:
   ```typescript
-  await this.client.executeIsolated(async (isolatedClient) => {
+  import { WatchError } from 'redis';
+
+  const pool = await this.client.createPool();
+  await pool.connect();
+  const committed = await pool.execute(async (isolatedClient) => {
     await isolatedClient.watch(key);
     const raw = await isolatedClient.get(key);
     const merged = [...(raw ? JSON.parse(raw) : []), ...messages];
-    const result = await isolatedClient
-      .multi()
-      .setEx(key, this.ttlSeconds, JSON.stringify(merged))
-      .exec();
-    if (result === null) throw new WatchError('retry');
+    try {
+      await isolatedClient
+        .multi()
+        .setEx(key, this.ttlSeconds, JSON.stringify(merged))
+        .exec();
+      return true;
+    } catch (error: unknown) {
+      if (error instanceof WatchError) return false; // WATCH triggered — retry signal
+      throw error;
+    }
   });
+  if (committed) return;
   ```
-  Wrap in the existing retry loop. Update plan §4.1 and §6 Step 1 accordingly before SPBED implementation.
+  Wrap in the existing retry loop. The pool manages connection lifecycle via `#returnClient` → `resetIfDirty()`, so no manual `isolatedClient.unwatch()` is needed. Update plan §4.1 and §6 Step 1 accordingly before SPBED implementation.
 - **Status:** Must be corrected before implementation. Return to SPSA for plan revision.
 
 ### 1.2 A3 (ToolDefinitionError) — Incomplete Keyword Coverage
@@ -75,7 +85,7 @@ The dependency graph in `priority-and-implementation-order.md` is sound and fait
 
 ## 3. Recommended Actions Before SPBED Implementation
 
-1. **Block A1 implementation** until `05-grp-redis.md` §4.1 is revised to use `client.executeIsolated()` instead of direct `client.watch()` on the shared client instance.
+1. **Block A1 implementation** until `05-grp-redis.md` §4.1 is revised to use `RedisClientPool.execute()` (`client.createPool()` / `pool.execute()`) instead of direct `client.watch()` on the shared client instance, and to catch `WatchError` (thrown on WATCH abort in v6) rather than checking `result === null` — the v4-era `client.executeIsolated()` no longer exists in `redis@^6.0.0`.
 2. **Expand A3 scope** to cover unsupported-keyword detection on recognized types, not only unrecognized `type` values, before marking the plan SPBED-ready.
 3. **Add B15** (or equivalent) to the v1.1.0 Sprint 2 backlog for round-execution unification, so the DRY violation underlying Finding 1.2 has a tracked closure point rather than being implicitly closed by B1's restructuring alone.
 4. **Carry forward Finding 2.4** (Node `>=24` engine requirement) into either a v1.0.2 patch item or the `v1-v2-candidates.md` deferred list — it does not currently appear in any roadmap item and risks being dropped silently.
