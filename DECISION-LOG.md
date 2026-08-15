@@ -381,3 +381,91 @@ Stop (`AGENTS.md`) — surface it, don't silently override it.
 - `pnpm-lock.yaml` — regenerated via `pnpm install --lockfile-only`; lockfile now records `overrides.esbuild: ^0.28.2` and propagates the specifier to the peer-dependency metadata of `bundle-require@5.1.0` and `vite@8.2.1`; exactly one `esbuild@0.28.2` resolution (packages entry + snapshot), no version churn.
 - Verification: `pnpm why esbuild` reports exactly one version (`0.28.2`); `pnpm typecheck`, `pnpm lint`, and `pnpm test` all pass.
 - Classification: NOT a breaking change (config-only; dependency resolution tightened to a single patched version).
+
+---
+
+## ADR-041: Redis MEMORY adapter WATCH/MULTI/EXEC isolation via RedisClientPool (`node-redis` v6)
+
+**Status:** Proposed (SPSA draft — awaiting user review)
+
+**Decision:** Replace the read-modify-write pattern in `RedisMemoryAdapter.save()` with `WATCH`/`MULTI`/`EXEC` optimistic locking using `RedisClientPool.execute()` (not the v4-era `client.executeIsolated()`), and handle `Exec` failure by catching `WatchError` (not checking `result === null`), classifying a retry signal as `false` / non-retryable and any other transaction error as `MemorySaveError`.
+
+**Context:**
+
+The `P01-A1A2-redis-atomic-writes.md` plan (§4.1, §6) and its remediation in `claude-technical-analysis.md` §1.1 both prescribe `client.executeIsolated(async (isolatedClient) => { ... })` as the mechanism for isolating the `WATCH`/`MULTI`/`EXEC` sequence on a dedicated connection. Neither document accounts for the installed version. The installed packages are `redis@6.2.1` and `@redis/client@6.2.1`:
+
+| v4 API (plan assumes)                                 | v6 reality (verified)                                                                                                                                                     |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RedisClientType.executeIsolated(fn)`                 | **Does not exist.** Zero references in `@redis/client@6.2.1` dist (grep: 0 matches).                                                                                      |
+| `client.multi().exec()` returns `null` on WATCH abort | `_executeMulti` (`@redis/client@6.2.1` `lib/client/index.js:1318–1320`) throws `new errors_1.WatchError()` when `execResult === null`. Returns non-null array on success. |
+| `import { WatchError } from 'redis'` (v4 path)        | Same import works — `redis@6.2.1` does `export * from '@redis/client'`; `WatchError` is defined in `@redis/client/dist/lib/errors.js:10` and re-exported.                 |
+
+The `node-redis` v4→v5 migration guide states: _"In v4, RedisClient had the ability to create a pool of connections using an 'Isolation Pool'... In v5 we've extracted this pool logic into its own class—RedisClientPool."_ The v6 README repeats this. In v6, the equivalent of v4's `executeIsolated()` is:
+
+```typescript
+import { createClientPool } from 'redis'; // or '@redis/client'
+
+const pool = createClientPool({ url: config.url });
+await pool.execute(async (isolatedClient) => {
+  // WATCH + MULTI/EXEC on a dedicated connection from the pool
+});
+```
+
+`RedisClientPool.execute(fn)` (`@redis/client@6.2.1` `lib/client/pool.js:265`) acquires a dedicated `RedisClientType` from the pool, runs `fn` on it, and returns it via `#returnClient()` (`pool.js:313`) — guaranteeing that no other `save()` call can interleave commands on the same underlying connection.
+
+`RedisClientPool.MULTI()` (`pool.js:349`) creates a `Multi` command bound to `this.execute(client => client._executeMulti(...))` — meaning `multi().exec()` on a pool-acquired client correctly routes through the pool, maintaining isolation for the entire transaction.
+
+**A2 relationship:** Phase 2 of P01-A1A2 (error type fix — `ContextLoadError` → `MemorySaveError` in `save()`/`clear()`) is an independent concern touching the same `save()` method. The new transaction pattern rewrites the catch block entirely, so the `MemorySaveError` import and throw naturally land in the same diff. `load()` remains unchanged on `ContextLoadError`.
+
+**Consequence:**
+
+- **`packages/memory-redis/src/index.ts`**: Replace `createClient()` with `createClientPool()` in the URL-config constructor branch. The `save()` method wraps the WATCH/MULTI/EXEC sequence in `pool.execute(async (isolatedClient) => { ... })`. The retry loop (max 3 attempts, no delay) stays at the `save()` level. On success, `exec()` resolves without throwing. On WATCH-abort, `_executeMulti` throws `WatchError` — the `pool.execute` callback catches it, returns `false` (retry signal), and the outer loop retries. Any non-`WatchError` exception propagates to `save()`'s catch, which throws `MemorySaveError`.
+- **Error classification**: `WatchError` → `false` (retry signal, not an error to propagate). Non-WatchError exceptions → `MemorySaveError` (`retryable = false`, code `MEMORY_SAVE_FAILED`, per `packages/core/src/errors.ts:173` and ADR-007). This correctly classifies a failed save as non-retryable, aligning with ADR-007's taxonomy. The revised plan (§4.1) no longer uses a `result !== null` check — it catches `WatchError` inside the `pool.execute()` callback and translates it to a retry signal, since `_executeMulti` throws `WatchError` rather than returning `null` under v6.
+- **Test mocks**: `MockProvider` doesn't cover `MemoryAdapter` — tests for `memory-redis` need a Redis mock that stubs `createClientPool`, `RedisClientPool.prototype.execute`, and inside the callback `isolatedClient.watch`, `isolatedClient.get`, `isolatedClient.multi().setEx().exec()`. The `WatchError` throw path and the `unwatch().catch(() => {})` defensive path both need explicit test coverage.
+- **Cross-package consistency**: Any future `memory-redis` or `memory-*` adapter implementing WATCH/MULTI/EXEC must use the same `RedisClientPool.execute()` pattern. This is an implicit adapter-level convention (not an `interfaces.ts` change — the `MemoryAdapter` interface is unchanged).
+- **ADR compatibility**: Complies with ADR-007 (retryable classification — WatchError retry is a signal, not an `OrchestratorError`; actual save failures throw `MemorySaveError` with `retryable = false`). Complies with ADR-012 (`save()` still accepts `Message[]`). Complies with ADR-004 (no dependency on hooks/events ordering — transaction logic is entirely within the adapter).
+- **No ADR needed for MemoryAdapter interface**: The `MemoryAdapter.save(sessionId, messages: Message[]): Promise<void>` signature is unchanged. This is an internal implementation improvement.
+
+**Alternatives considered:**
+
+- **A) `WATCH`/`MULTI`/`EXEC` on the shared `RedisClientType`** (i.e., `this.client.watch(key)` directly, without a pool) — **Rejected: the server-side optimistic lock is silently defeated.**
+
+  Redis tracks `WATCH` state **per-connection** (server-side). A shared `RedisClientType` multiplexes all commands over a single TCP socket. When Call A and Call B both call `watch(key)` on the same connection, the server's watch state is shared. The critical defect is not in client-side private fields — it is in the **server-side WATCH reset semantics**:
+
+  Per Redis docs, a successful `EXEC` (or `DISCARD`) on a connection **resets all WATCH state** on that connection. The interleaving is:
+
+  1. Call A: `WATCH key` → server starts watching on connection C.
+  2. Call A: `GET key` → reads `[m1]` (outside MULTI). Call A yields (async/await).
+  3. Call B: `WATCH key` on connection C → server re-watches (no-op, already watching).
+  4. Call B: `GET key` → reads `[m1]`.
+  5. Call B: `MULTI SETEX [m1, mb] EXEC` → server executes, key is now `[m1, mb]`. Server **resets WATCH state on connection C** (successful EXEC clears watch).
+  6. Call A resumes: `MULTI SETEX [m1, ma] EXEC` → server checks: is the watched key modified? But WATCH was **already reset** by Call B's EXEC in step 5. Server sees no active watch → EXEC succeeds → writes `[m1, ma]`, **silently overwriting Call B's `[m1, mb]`**.
+
+  The data-loss race the transaction was meant to prevent is **reproduced**. `RedisClientPool.execute()` eliminates this by giving each `save()` a **dedicated connection** from the pool, so Call A's EXEC cannot be corrupted by Call B's EXEC on a different connection.
+
+  Client-side state (`#watchEpoch`, `#dirtyWatch` — `index.js:263–264`) provides secondary protection (detecting reconnection/dirty events within a single connection), but cannot prevent the server-side WATCH-reset that is the primary failure mode.
+
+- **B) Lua script via `EVALSHA`/`SCRIPT LOAD`** — Rejected. P01 §4.3 explicitly states "Do NOT introduce a Lua script." Additionally, a Lua script encoding the read-modify-write-append logic in Redis would be more efficient but introduces operational complexity: script deployment, SHA management, version tracking — none of which justify the marginal performance gain for append-only conversation history at typical `@atisse/core` throughput.
+
+- **C) Redis distributed lock (`SET key lock NX EX 10` + unlock via Lua)** — Rejected. node-redis v6 provides native `WATCH`/`MULTI`/`EXEC` optimistic locking, which is lighter-weight (no lock acquisition TTL to tune, no lock-release edge cases) and semantically precise (the lock only covers the exact key being modified). Redlock/`SETNX` lock patterns add contention overhead and failure modes (lock expiry mid-transaction, unlock race conditions) that are unnecessary when Redis transactions suffice.
+
+**References:**
+
+- `DECISION-LOG.md` — ADR-004 (hooks serial / events fire-and-forget; concurrent-safety referenced in P01 §1.1), ADR-007 (error taxonomy with `retryable` classification), ADR-012 (`MemoryAdapter.save()` accepts `Message[]`)
+- `packages/core/src/errors.ts:173` — `MemorySaveError` (`retryable = false`, code `MEMORY_SAVE_FAILED`)
+- `packages/core/src/errors.ts:138` — `ContextLoadError` (`retryable = true`, code `CONTEXT_LOAD_FAILED`)
+- `packages/core/src/interfaces.ts:164–168` — `MemoryAdapter` interface (unchanged by this ADR)
+- `packages/memory-redis/src/index.ts` — `save()` (lines 45–55), `clear()` (lines 57–65), `load()` (lines 33–43)
+- `packages/memory-redis/package.json` — peer dep: `"redis": "^6.0.0"` (compatible)
+- `.opencode/milestones/v1/v1.0.2/P01-A1A2-redis-atomic-writes.md` §4.1 (proposed `executeIsolated` usage — v4 API, not available in v6), §6 (step references), §8 (risk table — risk (A1) line 337 confirms pool need)
+- `.opencode/milestones/v1/analysis-reports/after-assessment-reports/claude-technical-analysis.md` §1.1 (remediation prescribes `executeIsolated` — v4 API; references issues #2613, #559)
+- `@redis/client@6.2.1` `lib/client/index.js:1287–1332` — `_executeMulti` implementation; line 1318–1319 confirms `execResult === null` → `throw new WatchError()`
+- `@redis/client@6.2.1` `lib/client/index.js:263–264` — `#dirtyWatch`, `#watchEpoch` private fields
+- `@redis/client@6.2.1` `lib/client/index.js:1198–1212` — `WATCH` sets `#watchEpoch`, `UNWATCH` clears it
+- `@redis/client@6.2.1` `lib/client/index.js:358–378` — `socketEpoch`, `isWatching`, `isDirtyWatch`, `setDirtyWatch`
+- `@redis/client@6.2.1` `lib/client/pool.js:265–312` — `RedisClientPool.execute(fn)` acquires/releases dedicated client
+- `@redis/client@6.2.1` `lib/client/pool.js:349–352` — `RedisClientPool.MULTI()` routes through `execute`
+- `@redis/client@6.2.1` `lib/client/pool.d.ts:138` — `execute<T>(fn: PoolTask<...>): Promise<Awaited<T>>`
+- `@redis/client@6.2.1` `lib/errors.js:10–15` — `WatchError` class definition
+- `@redis/client@6.2.1` `dist/index.d.ts:11–13` — `RedisClientPool`, `createClientPool` exports
+- `node_modules/.pnpm/redis@6.2.1/.../redis/dist/index.d.ts` — re-exports via `export * from '@redis/client'`
