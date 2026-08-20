@@ -12,6 +12,7 @@
 2. List each deferred v1 constraint with: error code (where applicable), rationale, and target version reference
 3. Reference the source ADRs in `DECISION-LOG.md` and scope limits in `.opencode/skill/constraints/SKILL.md`
 4. Do NOT modify any source code — documentation only
+5. Document the v1.0.2 limitation that extended JSON Schema keywords in tool `inputSchema` are silently dropped — only the P02-A3 minimal throw set raises `ToolDefinitionError`. Full keyword support lands in v1.1.0 (M14-B12 Phase 2).
 
 ---
 
@@ -50,6 +51,7 @@ The `docs/getting-started.md` file is the primary user-facing documentation entr
   | ---------- | ---------- | --------- | -------------- |
 
 - Each row references the relevant ADR from `DECISION-LOG.md` and the corresponding `.opencode/skill/constraints/SKILL.md` entry
+- Include a row documenting the v1.0.2 JSON Schema keyword limitation: extended keywords in tool `inputSchema` are silently dropped (only the P02-A3 minimal set throws `ToolDefinitionError`); full keyword support lands in v1.1.0 (M14-B12 Phase 2)
 - Cross-reference target version info from the `stale-docs/rules/roadmap.md` archive
 
 ### 4.2 What NOT to Do
@@ -76,14 +78,16 @@ The `docs/getting-started.md` file is the primary user-facing documentation entr
 
 Extract all documented v1 limitations from these sources:
 
-| Source                                                                    | Items                                                                                                                                                                                                                    |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `.opencode/skill/constraints/SKILL.md` lines 10–28 (v1 Scope Hard Limits) | Agent planning loop, autonomous decision-making, multi-agent, workflow DAG, graph execution, parallel tools, visual editor, SaaS dashboard, prompt template DSL, distributed orchestration, cost analytics, built-in RAG |
-| `.opencode/skill/constraints/SKILL.md` lines 207–231 (forbidden config)   | `allowParallelTools: true`, `maxToolRounds < 1`, `stream: true` + `fallbackProvider`                                                                                                                                     |
-| `DECISION-LOG.md` ADR-015                                                 | ContextProvider partial failure is fail-fast                                                                                                                                                                             |
-| `DECISION-LOG.md` ADR-017                                                 | Streaming + fallback forbidden together                                                                                                                                                                                  |
-| (archived: `stale-docs/rules/roadmap.md` lines 279–291)                   | `Tool.execute()` input/output is `unknown`, streaming + fallback cannot be combined, ContextProvider fail-fast                                                                                                           |
-| `.opencode/skill/interfaces/SKILL.md` line 166                            | `Tool.execute()` input/output typed as `unknown`                                                                                                                                                                         |
+| Source                                                                    | Items                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.opencode/skill/constraints/SKILL.md` lines 10–28 (v1 Scope Hard Limits) | Agent planning loop, autonomous decision-making, multi-agent, workflow DAG, graph execution, parallel tools, visual editor, SaaS dashboard, prompt template DSL, distributed orchestration, cost analytics, built-in RAG    |
+| `.opencode/skill/constraints/SKILL.md` lines 207–231 (forbidden config)   | `allowParallelTools: true`, `maxToolRounds < 1`, `stream: true` + `fallbackProvider`                                                                                                                                        |
+| `DECISION-LOG.md` ADR-015                                                 | ContextProvider partial failure is fail-fast                                                                                                                                                                                |
+| `DECISION-LOG.md` ADR-017                                                 | Streaming + fallback forbidden together                                                                                                                                                                                     |
+| `P02-A3-json-schema-converter-fix.md` (v1.0.2)                            | Minimal JSON Schema keyword throw set (`$ref`, `const`, `default`, `minItems`/`maxItems`, `patternProperties`, `type: array`, `additionalProperties` true/schema forms)                                                     |
+| `M14-B12-boundary-schema-validation.md` (v1.1.0)                          | Phase 2 — converter capability: full runtime support for extended keywords (`pattern`, `multipleOf`, `minProperties`/`maxProperties`, `uniqueItems`, `if`/`then`/`else`, `not`, `contains`, `propertyNames`, `prefixItems`) |
+| (archived: `stale-docs/rules/roadmap.md` lines 279–291)                   | `Tool.execute()` input/output is `unknown`, streaming + fallback cannot be combined, ContextProvider fail-fast                                                                                                              |
+| `.opencode/skill/interfaces/SKILL.md` line 166                            | `Tool.execute()` input/output typed as `unknown`                                                                                                                                                                            |
 
 ### Step 2: Add Section to getting-started.md
 
@@ -97,16 +101,17 @@ Extract all documented v1 limitations from these sources:
 
 The following constraints apply to v1. Each will be revisited in a future version.
 
-| Constraint                                       | Error Code              | Rationale                                                                            | Target Version        |
-| ------------------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------ | --------------------- |
-| `stream: true` + `fallbackProvider`              | `ConfigValidationError` | Mid-stream recovery impossible — consumer has partial output (ADR-017)               | v1.x.x or v2          |
-| `allowParallelTools: true`                       | `ConfigValidationError` | Tool execution is serial-only in v1                                                  | v2                    |
-| `maxToolRounds < 1`                              | `ConfigValidationError` | At least one round required                                                          | N/A (always enforced) |
-| ContextProvider failure is fail-fast             | `CONTEXT_LOAD_FAILED`   | Explicit failure over silent partial context (ADR-015)                               | v1.x.x or v2          |
-| `Tool.execute()` input/output typed as `unknown` | N/A (design limitation) | JSON Schema cannot be inferred by TypeScript; use Zod `safeParse` inside `execute()` | v2                    |
-| Agent planning / autonomous decisions            | N/A (not implemented)   | Kernel, not framework (Principle 3)                                                  | v2+                   |
-| Workflow DAG / graph execution                   | N/A (not implemented)   | Pipeline engine scope                                                                | v2+                   |
-| Node.js ≥ 24 required                            | N/A (environment)       | Runtime target — `package.json` `engines: { "node": ">=24" }`                        | N/A (always enforced) |
+| Constraint                                                      | Error Code                                                                      | Rationale                                                                                                                                                                                                                           | Target Version           |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `stream: true` + `fallbackProvider`                             | `ConfigValidationError`                                                         | Mid-stream recovery impossible — consumer has partial output (ADR-017)                                                                                                                                                              | v1.x.x or v2             |
+| `allowParallelTools: true`                                      | `ConfigValidationError`                                                         | Tool execution is serial-only in v1                                                                                                                                                                                                 | v2                       |
+| `maxToolRounds < 1`                                             | `ConfigValidationError`                                                         | At least one round required                                                                                                                                                                                                         | N/A (always enforced)    |
+| ContextProvider failure is fail-fast                            | `CONTEXT_LOAD_FAILED`                                                           | Explicit failure over silent partial context (ADR-015)                                                                                                                                                                              | v1.x.x or v2             |
+| `Tool.execute()` input/output typed as `unknown`                | N/A (design limitation)                                                         | JSON Schema cannot be inferred by TypeScript; use Zod `safeParse` inside `execute()`                                                                                                                                                | v2                       |
+| Unsupported extended JSON Schema keywords in tool `inputSchema` | `ToolDefinitionError` (P02-A3 minimal set only) / silently dropped for the rest | Only the v1.0.2 minimal keyword set throws; extended keywords (`pattern`, `multipleOf`, `minProperties`/`maxProperties`, `uniqueItems`, `if`/`then`/`else`, `not`, `contains`, `propertyNames`, `prefixItems`) are silently dropped | v1.1.0 (M14-B12 Phase 2) |
+| Agent planning / autonomous decisions                           | N/A (not implemented)                                                           | Kernel, not framework (Principle 3)                                                                                                                                                                                                 | v2+                      |
+| Workflow DAG / graph execution                                  | N/A (not implemented)                                                           | Pipeline engine scope                                                                                                                                                                                                               | v2+                      |
+| Node.js ≥ 24 required                                           | N/A (environment)                                                               | Runtime target — `package.json` `engines: { "node": ">=24" }`                                                                                                                                                                       | N/A (always enforced)    |
 ```
 
 ---
@@ -144,6 +149,8 @@ pnpm test:coverage
 
 - `.opencode/skill/constraints/SKILL.md` — v1 Scope Hard Limits table, forbidden config patterns
 - `DECISION-LOG.md` — ADR-015 (context fail-fast), ADR-017 (streaming+fallback)
+- `P02-A3-json-schema-converter-fix.md` (v1.0.2) — Minimal keyword throw set; extended keywords out of scope
+- `M14-B12-boundary-schema-validation.md` (v1.1.0) — Phase 2 converter capability (full extended-keyword support)
 - `.opencode/stale-docs/rules/roadmap.md` — Known Limitations (v1) section, v2+ Boundary table (archived)
 - `.opencode/skill/interfaces/SKILL.md` — `Tool.execute()` typing (line 166)
 - `.opencode/skill/principles/SKILL.md` — Principle 1: Explicit Over Magical

@@ -12,7 +12,7 @@ Create a new internal validation module at `packages/core/src/validation/` with 
 
 Add a dedicated unit test file `packages/core/tests/unit/validation-schemas.test.ts` covering every schema with valid, invalid, boundary, and default-value cases — so schema behavior (including default application and boundary clamping) is locked down and documented by tests.
 
-**Note:** This plan depends on B1 (pipeline decomposition) being complete first — the boundary definitions are cleaner after the pipeline module split. Also builds on A3 (v1.0.2) which fixed the `z.never()` issue in `jsonSchemaToZod`.
+**Note:** This plan depends on B1 (pipeline decomposition) being complete first — the boundary definitions are cleaner after the pipeline module split. Also builds on A3 (v1.0.2), which addressed silent under-validation in `jsonSchemaToZod` (unsupported keywords in the minimal throw set now raise `ToolDefinitionError`; `z.never()` is retained as defense-in-depth). Phase 2 (converter capability — see §4.1) is NOT gated on B1 and may be sequenced independently of the B1A–B1E pipeline work.
 
 ---
 
@@ -24,7 +24,7 @@ Core uses Zod internally (in `tool-controller.ts`) for tool input validation, an
 - Some config fields pass through without runtime type enforcement.
 - Validation is applied inconsistently — some at construction time, some at `run()` entry, some never.
 
-This is a reliability gap. A systematic approach adds a reusable `validateOrThrow` utility and applies it at all external boundaries. This builds on the existing Zod dependency (ADR-009) and the pattern from A3 (v1.0.2) which fixed the `z.never()` issue in `jsonSchemaToZod`.
+This is a reliability gap. A systematic approach adds a reusable `validateOrThrow` utility and applies it at all external boundaries. This builds on the existing Zod dependency (ADR-009) and the pattern from A3 (v1.0.2), which introduced explicit `ToolDefinitionError` for unsupported keywords in `jsonSchemaToZod`.
 
 ---
 
@@ -123,6 +123,30 @@ export const toolPolicySchema = z.object({
 });
 ```
 
+### Phase 2 — Converter Capability (NOT gated on B1)
+
+Implement runtime SUPPORT (conversion, not rejection) in `jsonSchemaToZod` for the extended keyword set:
+
+- `pattern`
+- `multipleOf`
+- `minProperties` / `maxProperties`
+- `uniqueItems`
+- `if` / `then` / `else`
+- `not`
+- `contains`
+- `propertyNames`
+- `prefixItems`
+
+Each keyword is converted (supported), never silently dropped, and covered by valid/invalid/boundary tests.
+
+This consumes P02-A3's `checkUnsupportedKeywords` groundwork: these keywords move from 'silently dropped' straight to 'supported' — they were never added to P02's throw list, so no rejection behavior is removed or reverted.
+
+**Optional future candidates** (rejected in v1.0.2, promoted in a later version if supported): the `additionalProperties` schema form and `type` arrays (nullable unions).
+
+**Sequencing:** M03-B5 (`ValidationErrorDetail`) must land before this plan's Step 4 (`validateInput` → `ValidationErrorDetail[]`).
+
+> **Handoff note — Phase 2 (converter capability — NOT gated on B1, may be sequenced independently of the B1A–B1E pipeline work):** implement runtime support in `jsonSchemaToZod` for `pattern`, `multipleOf`, `minProperties`/`maxProperties`, `uniqueItems`, `if`/`then`/`else`, `not`, `contains`, `propertyNames`, `prefixItems`. Each keyword is converted (supported), never silently dropped, and covered by valid/invalid/boundary tests. Consumes P02-A3's `checkUnsupportedKeywords` groundwork: keywords move from 'silently dropped' straight to 'supported' — they were never added to P02's throw list. Sequencing: M03-B5 (`ValidationErrorDetail`) must land before this plan's Step 4 (`validateInput` → `ValidationErrorDetail[]`).
+
 ### 4.2 What NOT to Do
 
 - Do NOT add a new runtime dependency — Zod is already in core.
@@ -135,14 +159,16 @@ export const toolPolicySchema = z.object({
 
 ## 5. Files to Modify
 
-| File                                                  | Action | Notes                                                               |
-| ----------------------------------------------------- | ------ | ------------------------------------------------------------------- |
-| `packages/core/src/validation/validator.ts`           | NEW    | `validateOrThrow` utility + helper functions                        |
-| `packages/core/src/validation/schemas.ts`             | NEW    | Zod schemas for `RetryPolicy`, `TimeoutPolicy`, `ToolPolicy`        |
-| `packages/core/src/validation/index.ts`               | NEW    | Module barrel export                                                |
-| `packages/core/tests/unit/validation-schemas.test.ts` | NEW    | Unit tests — every schema with valid/invalid/boundary/default cases |
-| `packages/core/src/tool-controller.ts`                | Modify | Update `validateInput` to produce `ValidationErrorDetail[]`         |
-| `packages/core/src/orchestrator.ts`                   | Modify | Optionally apply policy Zod schemas at construction time            |
+| File                                                  | Action           | Notes                                                                                                                                                                                                             |
+| ----------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core/src/validation/validator.ts`           | NEW              | `validateOrThrow` utility + helper functions                                                                                                                                                                      |
+| `packages/core/src/validation/schemas.ts`             | NEW              | Zod schemas for `RetryPolicy`, `TimeoutPolicy`, `ToolPolicy`                                                                                                                                                      |
+| `packages/core/src/validation/index.ts`               | NEW              | Module barrel export                                                                                                                                                                                              |
+| `packages/core/tests/unit/validation-schemas.test.ts` | NEW              | Unit tests — every schema with valid/invalid/boundary/default cases                                                                                                                                               |
+| `packages/core/src/tool-controller.ts`                | Modify           | Update `validateInput` to produce `ValidationErrorDetail[]`                                                                                                                                                       |
+| `packages/core/src/tool-controller.ts`                | Modify (Phase 2) | Extend `jsonSchemaToZod` conversion for the extended keyword set (`pattern`, `multipleOf`, `minProperties`/`maxProperties`, `uniqueItems`, `if`/`then`/`else`, `not`, `contains`, `propertyNames`, `prefixItems`) |
+| `packages/core/tests/unit/validation-schemas.test.ts` | Modify (Phase 2) | Add valid/invalid/boundary keyword-conversion tests (or a dedicated converter test file)                                                                                                                          |
+| `packages/core/src/orchestrator.ts`                   | Modify           | Optionally apply policy Zod schemas at construction time                                                                                                                                                          |
 
 ---
 
@@ -189,6 +215,12 @@ Create `packages/core/tests/unit/validation-schemas.test.ts`. Every schema in `v
   - boundary: `maxToolRounds: 1`
   - default: `{}` parses to `{ maxToolRounds: 5, allowParallelTools: false, toolTimeoutMs: 10_000 }`
 
+### Phase 2 Steps — Converter Capability (NOT gated on B1)
+
+1. Extend the `jsonSchemaToZod` conversion in `packages/core/src/tool-controller.ts` to support each extended keyword (`pattern`, `multipleOf`, `minProperties`/`maxProperties`, `uniqueItems`, `if`/`then`/`else`, `not`, `contains`, `propertyNames`, `prefixItems`) — conversion, never silent drop.
+2. Add keyword tests to `packages/core/tests/unit/validation-schemas.test.ts` (or a dedicated converter test file) — valid, invalid, and boundary cases per keyword.
+3. Verify: `pnpm lint && pnpm typecheck && pnpm test && pnpm test:coverage`.
+
 ---
 
 ## 7. Verification Requirements
@@ -233,6 +265,9 @@ Specific assertions to verify:
 - `.opencode/skill/interfaces/SKILL.md` — Error Code Registry, Tool Contracts
 - `.opencode/skill/interfaces/SKILL.md` — Policy Contracts
 - `DECISION-LOG.md` — ADR-009 (Zod for schema validation)
+- `DECISION-LOG.md` — ADR-022 (union widening is MINOR), ADR-036 (`z.never()` defense-in-depth)
+- `P02-A3-json-schema-converter-fix.md` (v1.0.2) — `checkUnsupportedKeywords` groundwork; minimal v1.0.2 throw set
+- `M03-B5-structured-validation-errors.md` — `ValidationErrorDetail` prerequisite for Step 4
 - `.opencode/skill/principles/SKILL.md` — Principle 1 (Explicit Over Magical)
 - `packages/core/src/errors.ts` — `ToolValidationError` current implementation
 - `packages/core/src/interfaces.ts` — Policy interfaces
