@@ -25,7 +25,7 @@ this.eventBus = createEventBus();
 
 This violates **Principle 6 (Production-Ready Defaults)** — in production, silently swallowed listener errors make debugging event-driven integrations nearly impossible. A developer registers an `on('run.completed', ...)` listener that throws, and the error disappears without any trace.
 
-The observability standards (`observability-standards.md`) state that "a developer can reconstruct what happened during a `run()` call from logs and events alone." Silent listener errors break this guarantee.
+The observability standards (`.opencode/skill/observability/SKILL.md`) state that "a developer can reconstruct what happened during a `run()` call from logs and events alone." Silent listener errors break this guarantee.
 
 The fix is minimal: inject the `Logger` (already available in `Orchestrator`) into the `EventBus` during construction, and use `logger.warn()` when a listener throws. This makes swallowed errors visible without changing the fire-and-forget execution model.
 
@@ -214,7 +214,7 @@ Specific assertions to verify:
 | Logger.warn itself throws             | Very Low   | Low    | The `this.logger?.warn(...)` safe-call pattern (`?.`) prevents crashes if logger is undefined. If the logger instance itself throws, the surrounding try/catch in emit swallows it. |
 | Existing createEventBus callers break | Low        | Low    | Function signature change is backward-compatible (optional second param). Verify all call sites.                                                                                    |
 | Logger dependency cycles              | Low        | Low    | `Logger` is a type-only import from `interfaces.ts` — no runtime circular dependency                                                                                                |
-| Wrong log level chosen                | Low        | Low    | `warn` is confirmed appropriate per observability-standards.md: "recoverable issues"                                                                                                |
+| Wrong log level chosen                | Low        | Low    | `warn` is confirmed appropriate per `.opencode/skill/observability/SKILL.md`: "recoverable issues"                                                                                                |
 
 ---
 
