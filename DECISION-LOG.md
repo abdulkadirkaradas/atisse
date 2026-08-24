@@ -469,3 +469,83 @@ await pool.execute(async (isolatedClient) => {
 - `@redis/client@6.2.1` `lib/errors.js:10–15` — `WatchError` class definition
 - `@redis/client@6.2.1` `dist/index.d.ts:11–13` — `RedisClientPool`, `createClientPool` exports
 - `node_modules/.pnpm/redis@6.2.1/.../redis/dist/index.d.ts` — re-exports via `export * from '@redis/client'`
+
+## ADR-042: ContextProvider Best-Effort Skip Mode and Per-Provider Timeout (Amendment to ADR-015)
+
+**Status:** Approved
+
+**Decision:** Four-part amendment to ADR-015; fail-fast remains the default. No new runtime dependency.
+
+1.  **(a) `ContextPolicy.onProviderFailure?: 'fail' | 'skip'` — opt-in best-effort.**
+    Added to `ContextPolicy` (`packages/core/src/interfaces.ts:248-256`, introduced by P04-A5) as optional field with default `'fail'` via `DEFAULT_CONTEXT_POLICY` (`packages/core/src/policies.ts:5-24`). `mergeContextPolicy()` (`policies.ts:60-68` pattern) propagates via shallow spread. `OrchestratorConfig.contextPolicy?: Partial<ContextPolicy>` (`interfaces.ts:369-382`) and `OrchestratorProfile.contextPolicy?: Partial<ContextPolicy>` (`interfaces.ts:384-399`, `profile.ts:80-185` via `resolveConfig()`) may override. Default `'fail'` preserves ADR-015 fail-fast semantics; `'skip'` enables best-effort.
+
+2.  **(b) `TimeoutPolicy.contextTimeoutMs?: number` — optional per-provider timeout.**
+    Added to `TimeoutPolicy` (`interfaces.ts:235-242`) as optional field. `DEFAULT_TIMEOUT` (`policies.ts:14-18`) leaves it `undefined` (no timeout). `mergeTimeoutPolicy()` (`policies.ts:46-54`) propagates. In `initializePipeline()` (`packages/core/src/pipeline.ts:300-409`, post-B1 split `pipeline/shared.ts:initializePipeline`), each `provider.provide()` is wrapped with `withTimeout(promise, contextTimeoutMs)` (`policies.ts:94-121`) when defined. Timeout rejection (`TimeoutExceededError` `errors.ts:230-237` `retryable=false`) is caught and re-wrapped as `ContextLoadError(providerId, cause)` (`errors.ts:138-150` `retryable=true`) before skip/fail branching. Independent of `totalTimeoutMs` hard ceiling (`pipeline.ts:1536-1539` `Promise.race` at top level, ADR-014/ADR-026); `contextTimeoutMs` does not adjust `totalTimeoutMs`.
+
+3.  **(c) Event contract: `context.failed` retained, `context.skipped` added with `EventErrorPayload`.**
+    `OrchestratorEvent` (`interfaces.ts:432-458`) keeps `{ type: 'context.failed'; runId; providerId; error: EventErrorPayload }` (`interfaces.ts:444`) for every failure. Adds `{ type: 'context.skipped'; runId; providerId; error: EventErrorPayload }` — **not** `{ reason: string }` as drafted in M05 §6 Step 3. Rationale: (i) consistency with `tool.failed`/`context.failed` which carry `EventErrorPayload` (`interfaces.ts:440-444`, `events.ts:9-30`); (ii) S-1 secret hygiene (`security` S-1): `toEventErrorPayload()` (`pipeline.ts:55-61`) serializes `code/message/retryable` only, never `cause` or raw error values — `reason: string` from `error.message` would risk leaking provider internals/secrets without `code`/`retryable` structure; (iii) consumers can branch on `error.code`/`retryable`. Both events emit on skip; only `context.failed` emits on `fail` path.
+
+4.  **(d) State machine: skip is an internal `continue` in `CONTEXT_INJECTING`, not a new state.**
+    No new `LifecycleState` (`interfaces.ts:7-18`, `lifecycle.ts:VALID_TRANSITIONS`, `state-machine.md`). Loop in `initializePipeline()` (`pipeline.ts:371-408`) on `onProviderFailure==='skip'`: `catch → emit context.failed + context.skipped → continue` without `stateMachine.transition('RETRYING')` or `transition('FAILED')`. After loop: if `skippedCount === contextProviders.length && providerResults.length === 0` → `transition('FAILED')` + throw `ContextLoadError('All context providers failed')` + `run.failed` (`pipeline.ts:1057-1080` pattern). If at least one provider succeeded (`providerResults.length > 0`), transition `CONTEXT_INJECTED` (`pipeline.ts:412-413`) and continue to memory load / `PROMPT_COMPOSED` even if some providers skipped. No `RETRYING` for skip path.
+
+**Context:**
+
+ADR-015 (`DECISION-LOG.md:110`) ruled fail-fast because v1 had (i) no `ContextPolicy` surface to express intent, (ii) no per-provider timeout, (iii) desire for explicit failure over silent partial context — discarding partial results and emitting `context.failed` was the safest default. Correct for v1 initial.
+
+Best-effort is now required: multi-provider setups (RAG vector store + web search + user-profile provider) where providers are independent and non-critical. M05-B6B7 (§2) — one transient RAG failure should not discard web-search context. P04-A5 established `ContextPolicy` (`maxMessagesPerProvider`, `maxContentLengthChars`) and `DEFAULT_CONTEXT_POLICY` pattern, making a policy-driven opt-in (`onProviderFailure`) the natural extension. Per-provider timeout (B7) prevents a single hanging `provide()` from consuming the whole `totalTimeoutMs` budget and starving `GENERATING`.
+
+`ContextProviderInput.signal?: AbortSignal` (`interfaces.ts:173` `Omit<RunInput,'stream'|'profile'> & { signal?: AbortSignal }`) is added additive-optional to forward `RunInput.signal` for cooperative cancellation, orthogonal to `contextTimeoutMs` (which uses `withTimeout` hard `Promise.race`, ADR-014).
+
+**Retryable classification clarification (fix C1):**
+
+`TimeoutExceededError` (`errors.ts:230-237`) is `retryable=false` (`code='TIMEOUT_EXCEEDED'`). It must **not** be emitted or branched on directly in the context loop. The `withTimeout` rejection is wrapped as `ContextLoadError(providerId, timeoutCause)` (`errors.ts:138-150` `retryable=true`, `code='CONTEXT_LOAD_FAILED'`) — matching the existing `catch` normalization `error instanceof OrchestratorError ? error : new ContextLoadError(providerId, error)` (`pipeline.ts:396-397`). This makes the skip vs. fail decision policy-driven (`onProviderFailure`), not retryable-driven, and keeps `context.failed`/`context.skipped` `EventErrorPayload.retryable=true` for observability.
+
+**Profile interaction:**
+
+`OrchestratorProfile` (`interfaces.ts:384-399` per ADR-005 snapshot) may override `contextPolicy` and `timeout` (including `contextTimeoutMs`). `profile.ts:resolveConfig()` merges with same branching as `retry`/`timeout`/`toolPolicy`: `let contextPolicy = DEFAULT_CONTEXT_POLICY` / `let timeout = DEFAULT_TIMEOUT`; if `profileName !== undefined` merge profile partial, else merge base partial (`profile.ts:98-153` pattern). Synchronizes `toolPolicy.toolTimeoutMs` from `timeout` (ADR-035) unchanged. `profile.resolved` event (`interfaces.ts:445-458`, `pipeline.ts:195-237`) `overrides` gains `contextPolicy: boolean` when profile provides it.
+
+**Layering:**
+
+- L0 `interfaces.ts` / `errors.ts` / `types.ts:ResolvedConfig` — contracts only.
+- L1 `policies.ts` — `DEFAULT_CONTEXT_POLICY`, `mergeContextPolicy`, `withTimeout`, `DEFAULT_TIMEOUT` extension; `lifecycle.ts` / `prompt-composer.ts` / `profile.ts` unchanged except wiring.
+- L2 `tool-controller.ts` / `hooks.ts` / `events.ts` — `pipeline/shared.ts:initializePipeline` consumes policies; `events.ts` emit path unchanged (ADR-004 fire-and-forget).
+- No new runtime dependency (Zod-only rule, `constraints`).
+
+**Alternatives considered:**
+
+- **Keep fail-fast only (ADR-015 literal).** Rejected — forces RAG-non-critical use cases to implement user-land best-effort outside kernel, duplicating truncation (`enforceCharLimit` `pipeline.ts:262-288`, S-5) and event semantics.
+- **`context.skipped` with `reason: string` (M05 draft).** Rejected — loses `code`/`retryable`, inconsistent with `EventErrorPayload` pattern (ADR-023), risks S-1 leak via raw `error.message`.
+- **New lifecycle state `CONTEXT_SKIPPING` / `RETRYING` per skip.** Rejected — `VALID_TRANSITIONS` (`lifecycle.ts`, `state-machine.md` per ADR-031) would require spec change; skip is not a retry, no delay, no `retry.attempted` event.
+- **Per-provider retry with `executeWithRetry`.** Rejected — context loading is sequential per ADR-013; retrying a single provider inside `CONTEXT_INJECTING` would conflate `RETRYING` (generation retry) with context policy. Fail-fast retry path (ADR-015 `RETRYING`→`GENERATING`) is separate.
+
+**Consequence:**
+
+- `packages/core/src/interfaces.ts` — add `ContextPolicy.onProviderFailure?: 'fail'|'skip'` (TSDoc default `'fail'`), `TimeoutPolicy.contextTimeoutMs?: number`, `ContextProviderInput & { signal?: AbortSignal }`, `OrchestratorEvent` `context.skipped` member with `error: EventErrorPayload`; `OrchestratorConfig.contextPolicy?`, `OrchestratorProfile.contextPolicy?` / `timeout` already supports optional.
+- `packages/core/src/policies.ts` — add `DEFAULT_CONTEXT_POLICY` (extend P04-A5), `mergeContextPolicy`, extend `DEFAULT_TIMEOUT` optional field handling; no `mergeTimeoutPolicy` logic change (spread); export updates.
+- `packages/core/src/types.ts` — `ResolvedConfig.contextPolicy: ContextPolicy` (P04-A5) and `ResolvedConfig.timeout: TimeoutPolicy` already resolve optional → required mapping.
+- `packages/core/src/profile.ts` — wire `contextPolicy` resolution in `resolveConfig()` branching; add `contextPolicy` to `ResolvedConfig` builder.
+- `packages/core/src/pipeline.ts` (`pipeline/shared.ts:initializePipeline` post-B1) — context loop with `withTimeout` wrapping + skip/fail branching + all-skipped `FAILED` guard; emit `context.failed` + `context.skipped` (`toEventErrorPayload`); keep `CONTEXT_MAX_MESSAGES`/`CONTEXT_MAX_CHARS` replaced by `config.contextPolicy` per P04-A5 wiring (`pipeline.ts:255-256`, `377`, `387`).
+- `packages/core/src/orchestrator.ts:55-139` — eager `ConfigValidationError` for `contextPolicy.maxMessagesPerProvider`/`maxContentLengthChars` (integer ≥1 finite, S-5) and `contextTimeoutMs` (`>0` finite when defined) and `onProviderFailure` enum validation.
+- `packages/core/src/events.ts` — no code change (type-driven emit).
+- Classification: **MINOR** (additive optional fields, default `'fail'` behavioral preservation). Not MAJOR per `api-design` (no removed/narrowed required field, no `run()` return shape change).
+- ADR-015 remains normative for `onProviderFailure='fail'` path; this ADR amends the "Best-effort: v1.x.x candidate" note to "Implemented as opt-in via ADR-042".
+
+**Verification (must be tested, SPQAE gate):**
+
+- Unit: `mergeContextPolicy` defaults, override, profile branching isolation (base not merged when profile active, P04-A5 parity).
+- Eager validation: `onProviderFailure` invalid enum, `contextTimeoutMs <=0|Infinity|NaN` → `ConfigValidationError` (`orchestrator.test.ts` pattern `476-491`).
+- Pipeline: `onProviderFailure='skip'` one fails → next provider runs, `context.failed`+`context.skipped` emitted with `EventErrorPayload { code='CONTEXT_LOAD_FAILED', retryable=true }`, `providerResults` contains success messages, transition `CONTEXT_INJECTED`; all fail → `FAILED` + `ContextLoadError` + `run.failed`; `onProviderFailure='fail'` → first failure aborts (ADR-015 parity).
+- Timeout: `contextTimeoutMs` wraps `provide()` via `withTimeout`, timeout → `ContextLoadError` → skip/fail per policy; `undefined` → no wrapping; `totalTimeoutMs` still enforced via top-level `Promise.race` (`pipeline.ts:1536`) independent.
+- Events: `context.skipped` carries `providerId` + `EventErrorPayload` (no `cause`/secret, S-1); `context.loaded` unchanged (`messageCount`).
+- Backward compat: existing configs without `contextPolicy`/`contextTimeoutMs` pass `pnpm typecheck && pnpm lint && pnpm test && pnpm test:coverage` without modification.
+
+**References:**
+
+- `DECISION-LOG.md:110` — ADR-015 (amended); `DECISION-LOG.md:039-041` format precedent
+- `packages/core/src/interfaces.ts:7-18` `LifecycleState`, `:173` `ContextProviderInput`, `:230-256` `RetryPolicy`/`TimeoutPolicy`/`ToolPolicy`/`ContextPolicy`, `:369-399` `OrchestratorConfig`/`OrchestratorProfile`, `:432-458` `OrchestratorEvent`
+- `packages/core/src/errors.ts:138-150` `ContextLoadError`, `:155-165` `ContextProviderError`, `:230-237` `TimeoutExceededError`, `:331-333` `isRetryable`
+- `packages/core/src/policies.ts:5-24` `DEFAULT_*`, `:46-68` `merge*`, `:94-121` `withTimeout`, `:76-90` `calculateDelay`
+- `packages/core/src/pipeline.ts:262-288` `enforceCharLimit` (S-5), `:300-409` `initializePipeline` context loop (`:356-413` `CONTEXT_INJECTING`→`PROMPT_COMPOSED`), `:1057-1080` `run.failed` handling, `:1536-1539` `totalTimeoutMs` `Promise.race`
+- `packages/core/src/profile.ts:80-185` `resolveConfig` branching; `packages/core/src/orchestrator.ts:55-139` constructor validation, `:160-201` `run()` entry; `packages/core/src/events.ts:9-30` fire-and-forget (ADR-004); `packages/core/src/lifecycle.ts` `VALID_TRANSITIONS` (ADR-030 L1/L2 layering, ADR-031 spec-authoritative)
+- `.opencode/milestones/v1/v1.0.2/P04-A5-context-policy-config.md` — base `ContextPolicy`/`DEFAULT_CONTEXT_POLICY`; `.opencode/milestones/v1/v1.1.0/M05-B6B7-context-policy-extensions.md` §§1-6 (superseded in `reason:string` and `TimeoutExceededError` retryable aspects)
+- `.opencode/skill/security/SKILL.md` S-1/S-5, `constraints` v1 scope, `architecture` lifecycle, `interfaces` frozen contracts
