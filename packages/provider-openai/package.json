@@ -50,6 +50,6 @@
   },
   "peerDependencies": {
     "@atisse/core": "workspace:*",
-    "openai": "^6.39.1"
+    "openai": "^7.15.0"
   }
 }
