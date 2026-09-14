@@ -109,6 +109,19 @@ export class Orchestrator {
       );
     }
 
+    if (config.contextPolicy?.maxMessagesPerProvider !== undefined) {
+      const v = config.contextPolicy.maxMessagesPerProvider;
+      if (!Number.isInteger(v) || v < 1 || !isFinite(v)) {
+        validationErrors.push('contextPolicy.maxMessagesPerProvider must be integer >=1 and finite');
+      }
+    }
+    if (config.contextPolicy?.maxContentLengthChars !== undefined) {
+      const v = config.contextPolicy.maxContentLengthChars;
+      if (!Number.isInteger(v) || v < 1 || !isFinite(v)) {
+        validationErrors.push('contextPolicy.maxContentLengthChars must be integer >=1 and finite');
+      }
+    }
+
     // Validate no duplicate tool names
     if (config.tools && config.tools.length > 0) {
       const toolNames = new Set<string>();

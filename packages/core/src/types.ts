@@ -6,6 +6,7 @@ import type {
   RetryPolicy,
   TimeoutPolicy,
   ToolPolicy,
+  ContextPolicy,
   HookRegistry,
   Logger,
   OrchestratorConfig,
@@ -34,6 +35,7 @@ export interface ResolvedConfig {
   retry: RetryPolicy;
   timeout: TimeoutPolicy;
   toolPolicy: ToolPolicy;
+  contextPolicy: ContextPolicy;
   hooks: HookRegistry;
   logger: Logger;
   /** Original config before profile resolution - needed for profile.resolved event */

@@ -1,8 +1,8 @@
-import type { RetryPolicy, TimeoutPolicy, ToolPolicy } from './interfaces.js';
+import type { RetryPolicy, TimeoutPolicy, ToolPolicy, ContextPolicy } from './interfaces.js';
 import type { OrchestratorError } from './errors.js';
 import { isRetryable, MaxRetriesExceededError, ProviderRateLimitError, RunCancelledError, TimeoutExceededError } from './errors.js';
 
-// ── Default Constants (internal — NOT exported) ───────────────────────────────────────
+// ── Default Constants ─────────────────────────────────────────────────────────
 
 const DEFAULT_RETRY: RetryPolicy = {
   maxAttempts: 3,
@@ -23,7 +23,12 @@ const DEFAULT_TOOL_POLICY: ToolPolicy = {
   toolTimeoutMs: 10_000,
 };
 
-// ── Merge Utilities (internal — NOT exported) ──────────────────────────────────────
+const DEFAULT_CONTEXT_POLICY: ContextPolicy = {
+  maxMessagesPerProvider: 50,
+  maxContentLengthChars: 50_000,
+};
+
+// ── Merge Utilities ───────────────────────────────────────────────────────────
 
 /**
  * Merge of retry policies.
@@ -58,6 +63,20 @@ function mergeTimeoutPolicy(base: TimeoutPolicy, override?: Partial<TimeoutPolic
  * Override values replace base values — not deep merged.
  */
 function mergeToolPolicy(base: ToolPolicy, override?: Partial<ToolPolicy>): ToolPolicy {
+  if (!override) {
+    return base;
+  }
+  return {
+    ...base,
+    ...override,
+  };
+}
+
+/**
+ * Merge of context policies.
+ * Override values replace base values — not deep merged.
+ */
+function mergeContextPolicy(base: ContextPolicy, override?: Partial<ContextPolicy>): ContextPolicy {
   if (!override) {
     return base;
   }
@@ -234,9 +253,11 @@ export {
   DEFAULT_RETRY,
   DEFAULT_TIMEOUT,
   DEFAULT_TOOL_POLICY,
+  DEFAULT_CONTEXT_POLICY,
   mergeRetryPolicy,
   mergeTimeoutPolicy,
   mergeToolPolicy,
+  mergeContextPolicy,
   abortableSleep,
   calculateDelay,
   withTimeout,

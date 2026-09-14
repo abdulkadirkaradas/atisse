@@ -256,6 +256,17 @@ export interface ToolPolicy {
 }
 
 /**
+ * Context policy configuration.
+ * Defaults: maxMessagesPerProvider=50, maxContentLengthChars=50000
+ */
+export interface ContextPolicy {
+  /** Maximum system messages per context provider — cumulative cap across all providers in a single run. Default: 50 */
+  maxMessagesPerProvider: number;
+  /** Maximum cumulative character length from context providers. Default: 50000 */
+  maxContentLengthChars: number;
+}
+
+/**
  * Run input parameters.
  */
 export interface RunInput {
@@ -377,6 +388,7 @@ export interface OrchestratorConfig {
   retry?: Partial<RetryPolicy>;
   timeout?: Partial<TimeoutPolicy>;
   toolPolicy?: Partial<ToolPolicy>;
+  contextPolicy?: Partial<ContextPolicy>;
   hooks?: Partial<HookRegistry>;
   profiles?: Record<string, OrchestratorProfile>;
   logger?: Logger;
