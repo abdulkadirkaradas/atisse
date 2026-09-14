@@ -55,6 +55,7 @@ export {
   ToolExecutionError,
   ToolValidationError,
   ToolNotFoundError,
+  ToolDefinitionError,
   ContextLoadError,
   ContextProviderError,
   MemorySaveError,

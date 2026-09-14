@@ -40,6 +40,7 @@ import {
   FallbackExhaustedError,
   ToolExecutionError,
   ToolValidationError,
+  ToolDefinitionError,
   ToolNotFoundError,
   ContextLoadError,
   MaxRetriesExceededError,
@@ -750,8 +751,12 @@ async function executeToolRoundWithErrorHandling(
     const err =
       error instanceof OrchestratorErrorClass ? error : new ToolExecutionError('unknown', error);
 
-    // ToolValidationError, ToolNotFoundError -> FAILED (fail-fast)
-    if (err instanceof ToolValidationError || err instanceof ToolNotFoundError) {
+    // ToolValidationError, ToolDefinitionError, ToolNotFoundError -> FAILED (fail-fast)
+    if (
+      err instanceof ToolValidationError ||
+      err instanceof ToolDefinitionError ||
+      err instanceof ToolNotFoundError
+    ) {
       throw err;
     }
 
@@ -1285,8 +1290,12 @@ async function executeStreamingGenerationRound(
       const err =
         error instanceof OrchestratorErrorClass ? error : new ToolExecutionError('unknown', error);
 
-      // ToolValidationError, ToolNotFoundError -> return error (fail-fast)
-      if (err instanceof ToolValidationError || err instanceof ToolNotFoundError) {
+      // ToolValidationError, ToolDefinitionError, ToolNotFoundError -> return error (fail-fast)
+      if (
+        err instanceof ToolValidationError ||
+        err instanceof ToolDefinitionError ||
+        err instanceof ToolNotFoundError
+      ) {
         return {
           result: { action: 'error', error: err, chunksToYield },
           accumulatedUsage,
