@@ -79,6 +79,8 @@ has no labels yet, that's worth surfacing to the user rather than deciding one u
 3. Checks green + approval on record still isn't "go" — the merge itself waits for the
    user, per the escalation rule above.
 
+Branching/CI/DoD governed by `git-workflow`: Delivery lifecycle (SSOT). Load `git-workflow` fully when planning/executing Delivery steps 0-7; grep is sufficient only for awareness. Load this skill (`github-ops`) fully when executing any `gh` command or evaluating Autonomous vs Escalate.
+
 ## Between roles
 
 SPBED is the primary actor here — opens issues/PRs, responds to feedback, keeps them

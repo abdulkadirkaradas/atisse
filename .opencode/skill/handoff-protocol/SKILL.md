@@ -56,6 +56,8 @@ every outgoing handoff, not just when it feels stuck.
 Any destination not listed for a source is forbidden — don't improvise a route that isn't
 in this table, even if it seems logical for the situation.
 
+See `git-workflow`: Delivery lifecycle (SSOT for steps 0-7) for the end-to-end sequence that uses this matrix. Load `git-workflow` fully when planning or executing any Delivery step; grep here is not sufficient for sequence, gates, or DoD.
+
 ## Persistence
 
 Before the handoff prose, call the `save_handoff` MCP tool with `handoff_json` (the object
