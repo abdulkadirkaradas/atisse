@@ -1,17 +1,25 @@
-import type { OrchestratorEvent, EventBus } from './interfaces.js';
+import type { OrchestratorEvent, EventBus, Logger } from './interfaces.js';
+import { OrchestratorError } from './errors.js';
+
+type InternalEventBusOptions = {
+  onListenerError?: (error: unknown, eventType: string) => void;
+  logger?: Logger;
+};
 
 /**
  * Internal EventBus.
  *
  * Layer: L2 (controller)
- * Dependencies: L0 only (interfaces.ts)
+ * Dependencies: L0 only (interfaces.ts, errors.ts)
  */
 class InternalEventBus implements EventBus {
   private readonly listeners: Map<string, Set<(event: OrchestratorEvent) => void>> = new Map();
   private readonly onListenerError: ((error: unknown, eventType: string) => void) | undefined;
+  private readonly logger: Logger | undefined;
 
-  constructor(onListenerError?: (error: unknown, eventType: string) => void) {
-    this.onListenerError = onListenerError;
+  constructor(options: InternalEventBusOptions = {}) {
+    this.onListenerError = options.onListenerError;
+    this.logger = options.logger;
   }
 
   /**
@@ -37,11 +45,17 @@ class InternalEventBus implements EventBus {
           try {
             await result;
           } catch (error) {
-            // Notify caller if callback provided; otherwise silently swallow per ADR-004
+            // Fire-and-forget per ADR-004 + hooks-events SKILL: notify and log, never throw
             try {
               this.onListenerError?.(error, event.type);
+              this.logger?.warn('Event listener threw an error', {
+                runId: event.runId,
+                eventType: event.type,
+                error: error instanceof Error ? error.message : String(error),
+                ...(error instanceof OrchestratorError ? { code: error.code } : {}),
+              });
             } catch {
-              // Silently swallow per ADR-004 — onListenerError itself must not produce unhandled rejections
+              // Neither onListenerError nor logger.warn may produce unhandled rejections
             }
           }
         })();
@@ -80,12 +94,10 @@ class InternalEventBus implements EventBus {
  * Factory function to create a new EventBus instance.
  * Used by orchestrator.ts to construct the EventBus.
  *
- * @param onListenerError - Optional callback invoked when an async listener rejects.
- *   Receives the error and the event type. Default behavior is silent (no callback).
- *   Pass a logger.error wrapper during development for visibility into listener failures.
+ * @param options - Optional configuration for the EventBus.
+ *   onListenerError: callback invoked when an async listener rejects.
+ *   logger: optional Logger for warn-level logging of listener errors.
  */
-export function createEventBus(
-  onListenerError?: (error: unknown, eventType: string) => void,
-): EventBus {
-  return new InternalEventBus(onListenerError);
+export function createEventBus(options: InternalEventBusOptions = {}): EventBus {
+  return new InternalEventBus(options);
 }

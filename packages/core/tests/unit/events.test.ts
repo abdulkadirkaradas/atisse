@@ -204,7 +204,7 @@ describe('events', () => {
 
     it('sync function returning resolved Promise does not trigger onListenerError', async () => {
       const onError = vi.fn();
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
       bus.on('run.started', () => {
         return Promise.resolve('sync fn returning promise');
       });
@@ -217,7 +217,7 @@ describe('events', () => {
 
     it('sync function returning rejected Promise triggers onListenerError', async () => {
       const onError = vi.fn();
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
       const testError = new Error('sync fn returning rejected promise');
       bus.on('run.started', () => {
         return Promise.reject(testError);
@@ -234,7 +234,7 @@ describe('events', () => {
   describe('onListenerError callback (Fix 2)', () => {
     it('invokes onListenerError when async listener rejects', async () => {
       const onError = vi.fn();
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
       bus.on('run.started', async () => {
         throw new Error('async fail');
       });
@@ -248,7 +248,7 @@ describe('events', () => {
 
     it('passes the error object as first argument to onListenerError', async () => {
       const onError = vi.fn();
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
       const error = new Error('async fail');
       bus.on('run.started', async () => {
         throw error;
@@ -263,7 +263,7 @@ describe('events', () => {
 
     it('passes the event type string as second argument to onListenerError', async () => {
       const onError = vi.fn();
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
       bus.on('run.started', async () => {
         throw new Error('fail');
       });
@@ -277,7 +277,7 @@ describe('events', () => {
 
     it('does NOT invoke onListenerError when async listener succeeds', async () => {
       const onError = vi.fn();
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
       bus.on('run.started', async () => {
         return 'ok';
       });
@@ -293,7 +293,7 @@ describe('events', () => {
       const onError = vi.fn().mockImplementation(() => {
         throw new Error('callback itself throws');
       });
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
       bus.on('run.started', async () => {
         throw new Error('async listener fail');
       });
@@ -313,7 +313,7 @@ describe('events', () => {
 
     it('mixed async success/failure isolates correctly', async () => {
       const onError = vi.fn();
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
 
       bus.on('run.started', async () => {
         return 'success';
@@ -332,7 +332,7 @@ describe('events', () => {
 
     it('calls onListenerError for each failing async listener', async () => {
       const onError = vi.fn();
-      const bus = createEventBus(onError);
+      const bus = createEventBus({ onListenerError: onError });
       bus.on('run.started', async () => {
         throw new Error('fail 1');
       });
