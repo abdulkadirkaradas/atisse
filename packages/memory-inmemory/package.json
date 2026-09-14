@@ -1,6 +1,6 @@
 {
   "name": "@atisse/memory-inmemory",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=24"

@@ -1,5 +1,12 @@
 # @atisse/memory-inmemory
 
+## 1.0.2
+
+### Patch Changes
+
+- Updated dependencies [d1d9e31]
+  - @atisse/core@1.1.0
+
 ## 1.0.1
 
 ### Patch Changes
