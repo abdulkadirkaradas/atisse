@@ -253,8 +253,7 @@ async function abortRunCall(abort: { delayMs?: number; signal?: AbortSignal }): 
 }
 
 // ── Context provider output limits ───────────────────────────────────
-const CONTEXT_MAX_MESSAGES = 50;
-const CONTEXT_MAX_CHARS = 50_000;
+// Limits are now configured via ResolvedConfig.contextPolicy (see policies.ts DEFAULT_CONTEXT_POLICY)
 
 /**
  * Enforce character-limit on context provider results.
@@ -375,17 +374,17 @@ async function initializePipeline(
       providerResults.push(...messages);
 
       // Enforce contextPolicy limits per security.md §S-5
-      if (providerResults.length > CONTEXT_MAX_MESSAGES) {
+      if (providerResults.length > config.contextPolicy.maxMessagesPerProvider) {
         logger.warn('Context provider exceeded maxMessagesPerProvider', {
           providerId: provider.id,
           count: providerResults.length,
-          max: CONTEXT_MAX_MESSAGES,
+          max: config.contextPolicy.maxMessagesPerProvider,
           runId,
         });
-        providerResults.length = CONTEXT_MAX_MESSAGES;
+        providerResults.length = config.contextPolicy.maxMessagesPerProvider;
       }
 
-      enforceCharLimit(providerResults, CONTEXT_MAX_CHARS, provider.id, logger, runId);
+      enforceCharLimit(providerResults, config.contextPolicy.maxContentLengthChars, provider.id, logger, runId);
 
       eventBus.emit({
         type: 'context.loaded',
