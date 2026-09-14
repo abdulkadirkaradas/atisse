@@ -24,6 +24,10 @@ Full rationale for these lives in the `principles` skill — load it before push
 
 New code: `packages/{core|provider-<name>|memory-<name>|context-<name>}/src/`. Tests mirror source under `tests/unit/` (adapter-local) or `packages/core/tests/integration/` (cross-cutting). Docs: `docs/`. Examples: `examples/{n}-{name}/`.
 
+## Delivery
+
+Delivery lifecycle 0–7 (Govern → Release) is normative — SSOT is the `git-workflow` skill. `develop` is dev trunk, `main` release-only; JIT branches from `develop` (rebase, squash-merge, delete). Load `git-workflow` fully for any step 0–7; load `handoff-protocol`/`github-ops` fully for handoffs/`gh` (grep is insufficient for normative values). See `git-workflow` skill: Delivery lifecycle.
+
 ## When multiple approaches seem valid, decide in this order
 
 1. Does it violate `principles`? → reject.
