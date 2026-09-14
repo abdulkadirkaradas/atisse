@@ -77,7 +77,28 @@
           "pm2 *": "deny",
           "systemctl *": "deny",
           "gh workflow run*": "deny",
-          "gh run*": "deny"
+          "gh run*": "deny",
+          "gh pr merge*": "ask",
+          "gh pr close*": "ask",
+          "gh issue close*": "ask",
+          "gh pr review *--approve*": "ask",
+          "gh pr review -a*": "ask",
+          "gh release create*": "ask",
+          "gh repo delete*": "deny",
+          "gh repo archive*": "deny",
+          "gh secret set*": "deny",
+          "gh api *-X DELETE*": "deny",
+          "gh api *-X PATCH*": "ask",
+          "gh api *-X POST*": "ask"
+        },
+        "write": "ask",
+        "edit": {
+          "*": "ask",
+          "packages/core/src/interfaces.ts": "deny",
+          ".opencode/skill/constraints/**": "deny",
+          ".opencode/skill/security/**": "deny",
+          ".opencode/skill/principles/**": "deny",
+          ".opencode/agent/*.md": "deny"
         }
       }
     },
@@ -106,7 +127,19 @@
           "pm2 *": "deny",
           "systemctl *": "deny",
           "gh workflow run*": "deny",
-          "gh run*": "deny"
+          "gh run*": "deny",
+          "gh pr merge*": "ask",
+          "gh pr close*": "ask",
+          "gh issue close*": "ask",
+          "gh pr review *--approve*": "ask",
+          "gh pr review -a*": "ask",
+          "gh release create*": "ask",
+          "gh repo delete*": "deny",
+          "gh repo archive*": "deny",
+          "gh secret set*": "deny",
+          "gh api *-X DELETE*": "deny",
+          "gh api *-X PATCH*": "ask",
+          "gh api *-X POST*": "ask"
         },
         "write": "allow",
         "edit": {
@@ -118,7 +151,9 @@
           ".opencode/agent/*.md": "deny",
           "DECISION-LOG.md": "deny"
         },
-        "skill": { "git-workflow": "allow" }
+        "skill": {
+          "git-workflow": "allow"
+        }
       }
     },
     "spqae": {
@@ -146,7 +181,19 @@
           "pm2 *": "deny",
           "systemctl *": "deny",
           "gh workflow run*": "deny",
-          "gh run*": "deny"
+          "gh run*": "deny",
+          "gh pr merge*": "ask",
+          "gh pr close*": "ask",
+          "gh issue close*": "ask",
+          "gh pr review *--approve*": "ask",
+          "gh pr review -a*": "ask",
+          "gh release create*": "ask",
+          "gh repo delete*": "deny",
+          "gh repo archive*": "deny",
+          "gh secret set*": "deny",
+          "gh api *-X DELETE*": "deny",
+          "gh api *-X PATCH*": "ask",
+          "gh api *-X POST*": "ask"
         },
         "write": "deny",
         "edit": "deny"
