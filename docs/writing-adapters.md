@@ -13,7 +13,7 @@ An adapter wraps an external system and exposes it through one of the kernel's p
 
 **Security constraints apply to all adapter types.** Never use `eval()`, `new Function()`, or `vm.runInNewContext()` — there are no legitimate use cases for dynamic code evaluation. Error messages must describe what went wrong in user-facing terms — never expose internal file paths, stack frames, config values, or system internals (S-7). User input (`run.input.prompt`) is always mapped to `role: 'user'` — never `role: 'system'` (S-2).
 
-For the complete implementation checklist, see [Adapter Pattern](../.opencode/workflows/adapter-pattern.md). This document covers the interface contracts and error-mapping patterns — the checklist covers build, test, and publish requirements.
+For the complete implementation checklist, see [Adapter Pattern](../.opencode/skill/adapter-pattern/SKILL.md). This document covers the interface contracts and error-mapping patterns — the checklist covers build, test, and publish requirements.
 
 ---
 

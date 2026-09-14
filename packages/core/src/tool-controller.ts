@@ -2,6 +2,7 @@ import type { Tool, ToolCall, ToolResult, ToolPolicy, Logger } from './interface
 import {
   ToolNotFoundError,
   ToolValidationError,
+  ToolDefinitionError,
   ToolExecutionError,
   OrchestratorError,
   TimeoutExceededError,
@@ -83,6 +84,7 @@ export class ToolController {
   /**
    * Validate tool input against its JSON schema using Zod.
    * @throws ToolValidationError when validation fails - FATAL, no retry
+   * @throws ToolDefinitionError when an unsupported JSON Schema keyword is encountered - FATAL, no retry
    */
   private validateInput(
     toolName: string,
@@ -91,7 +93,7 @@ export class ToolController {
   ): unknown {
     try {
       // Convert JSON Schema object to Zod schema
-      const zodSchema = this.jsonSchemaToZod(schema);
+      const zodSchema = this.jsonSchemaToZod(schema, toolName);
       const result = zodSchema.safeParse(input);
 
       if (!result.success) {
@@ -105,8 +107,8 @@ export class ToolController {
 
       return result.data;
     } catch (error) {
-      // Re-throw ToolValidationError as-is, wrap others
-      if (error instanceof ToolValidationError) {
+      // Re-throw OrchestratorError subtypes as-is (ToolValidationError, ToolDefinitionError), wrap others
+      if (error instanceof OrchestratorError) {
         throw error;
       }
       // This shouldn't happen since safeParse is used, but handle defensively
@@ -128,7 +130,7 @@ export class ToolController {
    * Honors the `required` array — properties not listed are wrapped in `.optional()`.
    * When `properties` is absent, returns `z.strictObject({})`.
    */
-  private zodFromObject(schema: Record<string, unknown>): z.ZodType<unknown> {
+  private zodFromObject(schema: Record<string, unknown>, toolName: string): z.ZodType<unknown> {
     const properties = schema.properties as Record<string, Record<string, unknown>> | undefined;
     const zodProperties: Record<string, z.ZodType<unknown>> = {};
 
@@ -136,7 +138,7 @@ export class ToolController {
       const requiredFields = Array.isArray(schema.required) ? (schema.required as string[]) : [];
 
       for (const [key, propSchema] of Object.entries(properties)) {
-        let zodProp = this.jsonSchemaToZod(propSchema);
+        let zodProp = this.jsonSchemaToZod(propSchema, toolName);
         if (!requiredFields.includes(key)) {
           zodProp = zodProp.optional();
         }
@@ -203,10 +205,10 @@ export class ToolController {
   /**
    * Convert JSON Schema array type to Zod array schema.
    */
-  private zodFromArray(schema: Record<string, unknown>): z.ZodType<unknown> {
+  private zodFromArray(schema: Record<string, unknown>, toolName: string): z.ZodType<unknown> {
     const items = schema.items as Record<string, unknown> | undefined;
     if (items) {
-      return z.array(this.jsonSchemaToZod(items));
+      return z.array(this.jsonSchemaToZod(items, toolName));
     }
     this.logger.warn('Array schema without items — array elements are unvalidated');
     return z.array(z.unknown());
@@ -216,17 +218,20 @@ export class ToolController {
    * Convert JSON Schema composition keywords (anyOf, oneOf, allOf) to Zod schemas.
    * Returns null when no composition keyword is present.
    */
-  private zodFromComposition(schema: Record<string, unknown>): z.ZodType<unknown> | null {
+  private zodFromComposition(
+    schema: Record<string, unknown>,
+    toolName: string,
+  ): z.ZodType<unknown> | null {
     // anyOf → z.union([...])
-    const anyOf = this.zodFromUnion(schema, 'anyOf');
+    const anyOf = this.zodFromUnion(schema, 'anyOf', toolName);
     if (anyOf) return anyOf;
 
     // oneOf → z.union([...])
-    const oneOf = this.zodFromUnion(schema, 'oneOf');
+    const oneOf = this.zodFromUnion(schema, 'oneOf', toolName);
     if (oneOf) return oneOf;
 
     // allOf → z.intersection(...)
-    const allOf = this.zodFromIntersection(schema);
+    const allOf = this.zodFromIntersection(schema, toolName);
     if (allOf) return allOf;
 
     return null;
@@ -238,12 +243,13 @@ export class ToolController {
   private zodFromUnion(
     schema: Record<string, unknown>,
     key: 'anyOf' | 'oneOf',
+    toolName: string,
   ): z.ZodType<unknown> | null {
     const items = schema[key];
     if (!Array.isArray(items) || items.length === 0) return null;
 
     const zodSchemas = (items as Record<string, unknown>[]).map((item) =>
-      this.jsonSchemaToZod(item),
+      this.jsonSchemaToZod(item, toolName),
     );
 
     // z.union with a single element works at runtime (returns the schema directly)
@@ -253,12 +259,15 @@ export class ToolController {
   /**
    * Convert JSON Schema allOf to a Zod intersection.
    */
-  private zodFromIntersection(schema: Record<string, unknown>): z.ZodType<unknown> | null {
+  private zodFromIntersection(
+    schema: Record<string, unknown>,
+    toolName: string,
+  ): z.ZodType<unknown> | null {
     const items = schema.allOf;
     if (!Array.isArray(items) || items.length === 0) return null;
 
     const zodSchemas = (items as Record<string, unknown>[]).map((item) =>
-      this.jsonSchemaToZod(item),
+      this.jsonSchemaToZod(item, toolName),
     );
 
     // Reduce intersection: schema1 & schema2 & schema3 ...
@@ -266,26 +275,66 @@ export class ToolController {
   }
 
   /**
+   * Check for unsupported JSON Schema keywords on any schema node.
+   * Throws ToolDefinitionError for keywords in the v1.0.2 minimal set.
+   */
+  private checkUnsupportedKeywords(schema: Record<string, unknown>, toolName: string): void {
+    const unsupported: readonly string[] = [
+      '$ref',
+      'const',
+      'default',
+      'minItems',
+      'maxItems',
+      'patternProperties',
+    ];
+
+    for (const keyword of unsupported) {
+      if (schema[keyword] !== undefined) {
+        throw new ToolDefinitionError(toolName, keyword);
+      }
+    }
+
+    // additionalProperties is NOT a bare-presence check. Behavior matrix:
+    // - false    -> allowed (enforced by z.strictObject); 21 test fixtures carry it
+    // - true     -> should throw (over-restrictive)
+    // - <schema> -> should throw (silently dropped)
+    if (schema.additionalProperties !== undefined && schema.additionalProperties !== false) {
+      throw new ToolDefinitionError(toolName, 'additionalProperties');
+    }
+  }
+
+  /**
    * Convert a JSON Schema object to a Zod schema for runtime validation.
    * Supports a subset of JSON Schema sufficient for tool input validation.
    * Composition keywords (anyOf, oneOf, allOf) are checked first, then type dispatch.
    */
-  private jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType<unknown> {
+  private jsonSchemaToZod(schema: Record<string, unknown>, toolName: string): z.ZodType<unknown> {
+    // Check for unsupported keywords first — catches $ref, const, default,
+    // minItems/maxItems, patternProperties, and additionalProperties (true/schema forms) on ANY type
+    this.checkUnsupportedKeywords(schema, toolName);
+
     // Check composition keywords first (they may appear without a top-level type)
-    const compositionResult = this.zodFromComposition(schema);
+    const compositionResult = this.zodFromComposition(schema, toolName);
     if (compositionResult) return compositionResult;
+
+    // Explicit check BEFORE the string coercion — a type array would otherwise be
+    // funneled into z.never() by the guard below
+    if (Array.isArray(schema.type)) {
+      throw new ToolDefinitionError(toolName, 'type: array');
+    }
 
     const typeName = typeof schema.type === 'string' ? schema.type : '';
 
-    if (typeName === 'object') return this.zodFromObject(schema);
+    if (typeName === 'object') return this.zodFromObject(schema, toolName);
     if (typeName === 'string') return this.zodFromString(schema);
     if (typeName === 'number') return this.zodFromNumber(schema);
     if (typeName === 'integer') return this.zodFromNumber(schema);
     if (typeName === 'boolean') return z.boolean();
-    if (typeName === 'array') return this.zodFromArray(schema);
+    if (typeName === 'array') return this.zodFromArray(schema, toolName);
     if (typeName === 'null') return z.null();
 
-    // Unrecognized or absent type — reject all input instead of silently accepting
+    // Unrecognized or absent type — keep the z.never() fallback (ADR-036 defense-in-depth).
+    // Only unsupported KEYWORDS throw; an unrecognized type string does not.
     this.logger.warn('Unsupported JSON Schema type — rejecting all input', {
       schemaType: schema.type,
     });

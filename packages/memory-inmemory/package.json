@@ -1,7 +1,7 @@
 {
   "name": "@atisse/memory-inmemory",
-  "version": "1.0.1",
-  "packageManager": "pnpm@11.5.0",
+  "version": "1.0.2",
+  "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=24"
   },
@@ -52,7 +52,7 @@
     "@atisse/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^25.9.3",
-    "vitest": "^4.1.9"
+    "@types/node": "^26.5.1",
+    "vitest": "^5.0.0"
   }
 }

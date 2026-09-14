@@ -5,9 +5,11 @@ import {
   DEFAULT_RETRY,
   DEFAULT_TIMEOUT,
   DEFAULT_TOOL_POLICY,
+  DEFAULT_CONTEXT_POLICY,
   mergeRetryPolicy,
   mergeTimeoutPolicy,
   mergeToolPolicy,
+  mergeContextPolicy,
 } from './policies.js';
 
 /**
@@ -92,6 +94,7 @@ export function resolveConfig(
   let retry = DEFAULT_RETRY;
   let timeout = DEFAULT_TIMEOUT;
   let toolPolicy = DEFAULT_TOOL_POLICY;
+  let contextPolicy = DEFAULT_CONTEXT_POLICY;
   let hooks = normalizeHookRegistry(base.hooks);
   const logger = base.logger ?? noOpLogger();
 
@@ -137,6 +140,10 @@ export function resolveConfig(
     if (profile.hooks !== undefined) {
       hooks = mergeHookRegistries(hooks, profile.hooks);
     }
+    // v1.0.2: no profile contextPolicy — keep default, do not merge base
+    // (mirrors existing retry/timeout/toolPolicy behavior where base is
+    //  not merged when a profile is active; base contextPolicy is only
+    //  applied in the else branch)
   } else {
     // No profile: apply base config partial overrides to defaults
     if (base.retry) {
@@ -147,6 +154,9 @@ export function resolveConfig(
     }
     if (base.toolPolicy) {
       toolPolicy = mergeToolPolicy(toolPolicy, base.toolPolicy);
+    }
+    if (base.contextPolicy) {
+      contextPolicy = mergeContextPolicy(contextPolicy, base.contextPolicy);
     }
     // contextProviders defaults to [] when not provided
     // tools remains baseTools when not provided
@@ -176,6 +186,7 @@ export function resolveConfig(
     retry,
     timeout,
     toolPolicy,
+    contextPolicy,
     hooks,
     logger,
     originalConfig: base,

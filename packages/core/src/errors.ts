@@ -132,6 +132,23 @@ export class ToolNotFoundError extends OrchestratorError {
   }
 }
 
+/**
+ * Tool definition error — unsupported JSON Schema keyword.
+ * FATAL — schema is invalid at config time, cannot be retried.
+ */
+export class ToolDefinitionError extends OrchestratorError {
+  readonly code = 'TOOL_DEFINITION_ERROR' as const;
+  readonly retryable = false;
+
+  constructor(
+    public readonly toolName: string,
+    public readonly unsupportedKeyword: string,
+    cause?: unknown,
+  ) {
+    super(`Tool '${toolName}' uses unsupported JSON Schema keyword: ${unsupportedKeyword}`, cause);
+  }
+}
+
 // ── Context Errors ───────────────────────────────────────────
 
 /**

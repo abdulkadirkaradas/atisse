@@ -40,6 +40,7 @@ import {
   FallbackExhaustedError,
   ToolExecutionError,
   ToolValidationError,
+  ToolDefinitionError,
   ToolNotFoundError,
   ContextLoadError,
   MaxRetriesExceededError,
@@ -252,8 +253,7 @@ async function abortRunCall(abort: { delayMs?: number; signal?: AbortSignal }): 
 }
 
 // ── Context provider output limits ───────────────────────────────────
-const CONTEXT_MAX_MESSAGES = 50;
-const CONTEXT_MAX_CHARS = 50_000;
+// Limits are now configured via ResolvedConfig.contextPolicy (see policies.ts DEFAULT_CONTEXT_POLICY)
 
 /**
  * Enforce character-limit on context provider results.
@@ -374,17 +374,17 @@ async function initializePipeline(
       providerResults.push(...messages);
 
       // Enforce contextPolicy limits per security.md §S-5
-      if (providerResults.length > CONTEXT_MAX_MESSAGES) {
+      if (providerResults.length > config.contextPolicy.maxMessagesPerProvider) {
         logger.warn('Context provider exceeded maxMessagesPerProvider', {
           providerId: provider.id,
           count: providerResults.length,
-          max: CONTEXT_MAX_MESSAGES,
+          max: config.contextPolicy.maxMessagesPerProvider,
           runId,
         });
-        providerResults.length = CONTEXT_MAX_MESSAGES;
+        providerResults.length = config.contextPolicy.maxMessagesPerProvider;
       }
 
-      enforceCharLimit(providerResults, CONTEXT_MAX_CHARS, provider.id, logger, runId);
+      enforceCharLimit(providerResults, config.contextPolicy.maxContentLengthChars, provider.id, logger, runId);
 
       eventBus.emit({
         type: 'context.loaded',
@@ -750,8 +750,12 @@ async function executeToolRoundWithErrorHandling(
     const err =
       error instanceof OrchestratorErrorClass ? error : new ToolExecutionError('unknown', error);
 
-    // ToolValidationError, ToolNotFoundError -> FAILED (fail-fast)
-    if (err instanceof ToolValidationError || err instanceof ToolNotFoundError) {
+    // ToolValidationError, ToolDefinitionError, ToolNotFoundError -> FAILED (fail-fast)
+    if (
+      err instanceof ToolValidationError ||
+      err instanceof ToolDefinitionError ||
+      err instanceof ToolNotFoundError
+    ) {
       throw err;
     }
 
@@ -1285,8 +1289,12 @@ async function executeStreamingGenerationRound(
       const err =
         error instanceof OrchestratorErrorClass ? error : new ToolExecutionError('unknown', error);
 
-      // ToolValidationError, ToolNotFoundError -> return error (fail-fast)
-      if (err instanceof ToolValidationError || err instanceof ToolNotFoundError) {
+      // ToolValidationError, ToolDefinitionError, ToolNotFoundError -> return error (fail-fast)
+      if (
+        err instanceof ToolValidationError ||
+        err instanceof ToolDefinitionError ||
+        err instanceof ToolNotFoundError
+      ) {
         return {
           result: { action: 'error', error: err, chunksToYield },
           accumulatedUsage,

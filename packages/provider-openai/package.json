@@ -1,7 +1,7 @@
 {
   "name": "@atisse/provider-openai",
-  "version": "1.0.1",
-  "packageManager": "pnpm@11.5.0",
+  "version": "1.0.2",
+  "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=24"
   },
@@ -50,6 +50,6 @@
   },
   "peerDependencies": {
     "@atisse/core": "workspace:*",
-    "openai": "^6.39.1"
+    "openai": "^7.15.0"
   }
 }
