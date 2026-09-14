@@ -41,7 +41,8 @@ export type OrchestratorErrorCode =
   | 'CONFIG_VALIDATION_FAILED'
   | 'HOOK_EXECUTION_FAILED'
   | 'PIPELINE_INTERNAL_ERROR'
-  | 'RUN_CANCELLED';
+  | 'RUN_CANCELLED'
+  | 'TOOL_DEFINITION_ERROR';
 
 /**
  * Serialized error payload for event bus.
