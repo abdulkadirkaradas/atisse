@@ -75,4 +75,4 @@ SPSA's decision, it isn't the decision).
 
 Close every task via the `handoff-protocol` skill. Receives only from SPSA
 (`REVIEW_REQUIRED.TEST_QUALITY`); routes to SPBED on revision, SPSA on pass or architectural
-signal — never directly to USER except the iteration-limit case.
+signal — never directly to USER except the iteration-limit case. SPQAE never commits, stages, stashes, pushes, or merges; commit requires explicit USER authorization.

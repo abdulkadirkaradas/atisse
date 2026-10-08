@@ -56,6 +56,10 @@ every outgoing handoff, not just when it feels stuck.
 Any destination not listed for a source is forbidden — don't improvise a route that isn't
 in this table, even if it seems logical for the situation.
 
+## Commit gate — handoffs never authorize commits
+
+A handoff (even `APPROVE` or `SPQAE->SPSA` pass) never authorizes a commit, stage, stash, push, or merge. The working tree stays uncommitted on every role handoff; committing is a separate step requiring explicit USER authorization for that commit. Record uncommitted artifacts in `artifacts`; do not run commit commands to "finish" a handoff.
+
 See `git-workflow`: Delivery lifecycle (SSOT for steps 0-7) for the end-to-end sequence that uses this matrix. Load `git-workflow` fully when planning or executing any Delivery step; grep here is not sufficient for sequence, gates, or DoD.
 
 ## Persistence
@@ -63,4 +67,4 @@ See `git-workflow`: Delivery lifecycle (SSOT for steps 0-7) for the end-to-end s
 Before the handoff prose, call the `save_handoff` MCP tool with `handoff_json` (the object
 above, as a string) and `conversation_md`. It writes both files under
 `.opencode/handoffs/[task_label]/`. If the call fails, note the error in `flags` and still
-emit the prose handoff — don't block on tooling failure.
+emit the prose handoff — don't block on tooling failure. When the next step is a commit, set `destination` to `USER` with `required_action` starting with a verb that requests explicit commit authorization (e.g. "Authorize commit of ...").

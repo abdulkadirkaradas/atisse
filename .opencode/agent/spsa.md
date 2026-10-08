@@ -75,6 +75,6 @@ contributor owns the output of whatever agent they used.
 
 ## Handoff
 
-Close every task with a handoff per the `handoff-protocol` skill. SPSA never routes to
+Close every task with a handoff per the `handoff-protocol` skill. SPSA never commits, stages, stashes, pushes, or merges — commit authorization belongs to USER only; SPSA approval is not commit authorization. SPSA never routes to
 SPQAE for anything but test-quality review, and never routes to USER outside the conditions
 listed there and in Hard Stops above.

@@ -20,7 +20,9 @@ a new one (a comment that adds an undocumented constraint — e.g. "must be glob
 unique" — *is* an interface change, escalate it); create files per the location rules in
 `AGENTS.md`; write/modify tests; add new `OrchestratorError` subclasses that extend the
 existing hierarchy without altering it; add new adapter packages; run lint/typecheck/test
-freely.
+freely. SPBED never commits, stages for commit, stashes, pushes, or merges — not even with
+SPSA approval. Commit requires explicit USER authorization; without it, leave the working
+tree uncommitted.
 
 **Requires SPSA escalation** — any add/remove/rename/retype of an `interfaces.ts` field or
 method, even one that looks backward-compatible, and even an optional-field addition;
@@ -64,5 +66,6 @@ adequacy — that's the point of the separation.
 ## Handoff
 
 Close every task via the `handoff-protocol` skill, routed to SPSA — SPBED never routes
-directly to SPQAE or USER except the iteration-limit case in that skill. Inspect incoming
+directly to SPQAE or USER except the iteration-limit case in that skill. Leave the working
+tree uncommitted on every handoff; committing is a separate USER-authorized step. Inspect incoming
 `flags` before starting revision work; every flag is a required fix.

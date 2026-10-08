@@ -30,6 +30,13 @@
     },
     "bash": {
       "*": "ask",
+      "git commit*": "ask",
+      "git add*": "ask",
+      "git stash*": "ask",
+      "git push*": "ask",
+      "git checkout*": "ask",
+      "git restore*": "ask",
+      "git rm*": "ask",
       "git push --force*": "deny",
       "git push -f*": "deny",
       "git push +*": "deny",
@@ -71,6 +78,13 @@
       "permission": {
         "bash": {
           "*": "allow",
+          "git commit*": "ask",
+          "git add*": "ask",
+          "git stash*": "ask",
+          "git push*": "ask",
+          "git checkout*": "ask",
+          "git restore*": "ask",
+          "git rm*": "ask",
           "git push --force*": "deny",
           "git push -f*": "deny",
           "git push +*": "deny",
@@ -121,6 +135,13 @@
       "permission": {
         "bash": {
           "*": "allow",
+          "git commit*": "ask",
+          "git add*": "ask",
+          "git stash*": "ask",
+          "git push*": "ask",
+          "git checkout*": "ask",
+          "git restore*": "ask",
+          "git rm*": "ask",
           "git push --force*": "deny",
           "git push -f*": "deny",
           "git push +*": "deny",
@@ -175,6 +196,13 @@
       "permission": {
         "bash": {
           "*": "allow",
+          "git commit*": "ask",
+          "git add*": "ask",
+          "git stash*": "ask",
+          "git push*": "ask",
+          "git checkout*": "ask",
+          "git restore*": "ask",
+          "git rm*": "ask",
           "git push --force*": "deny",
           "git push -f*": "deny",
           "git push +*": "deny",

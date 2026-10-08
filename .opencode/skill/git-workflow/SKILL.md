@@ -17,9 +17,17 @@ history — do it properly anyway, since it's what reviewers read during the PR.
 
 **Mode gate — check first, every time, before touching git or a file:**
 `[CURRENT MODE: PLAN MODE]` → analyze the diff and output the commit plan below, then
-**stop** — no git commands, no file edits. `[CURRENT MODE: BUILD MODE]` → execute the
-plan's commits sequentially, no confirmation needed between them, but never touch a file
-the plan didn't already list. No mode stated → treat as PLAN MODE (the safe default).
+**stop** — no git commands, no file edits. `[CURRENT MODE: BUILD MODE]` → implement the
+plan's file changes only, then **stop** — leave the working tree uncommitted for USER
+review. Never commit, stage for commit, stash, push, or merge without explicit USER
+authorization for that commit, even in BUILD MODE. Never touch a file the plan didn't
+already list. No mode stated → treat as PLAN MODE (the safe default).
+
+**Commit gate (normative) — USER authorization required:** No agent (SPBED, SPQAE, SPSA)
+commits without explicit USER authorization. A commit plan, SPSA approval, or SPQAE pass
+is not commit authorization. `git commit`, `git add`, `git stash`, `git push`,
+`git checkout`, `git restore`, and `git rm` MUST stay on `ask` (never `allow`, never
+`deny`); the tool prompt is a tripwire, the normative rule is the backstop.
 
 **Atomicity (SRP):** split unrelated changes — even within the same file — into separate
 commits. **Ordering:** a prerequisite commit (a `refactor`/`chore` the feature depends on)
@@ -94,7 +102,7 @@ Single source of truth for the end-to-end sequence 0-7. Normative — ad-hoc dis
 
 5. **SPQAE gate** — Mandatory when code or tests changed; optional for docs-only. SPQAE never `APPROVE` (per `github-ops` escalation rule); routes `SPQAE->SPBED` (test revision required) or `SPQAE->SPSA` (architectural signal / standard gap). Coverage threshold enforced per `testing` skill.
 
-6. **PR & merge** — SPBED creates PR, SPSA approves, USER merges. PR requirements: Conventional Commits title, body What / Why / Breaking Changes (+ migration path) / Checklist (tests added, no new `any`, `interfaces.ts` intact, docs updated if needed), `pnpm audit --audit-level=high` clean, changeset file present. Checks must be green (`gh pr checks`). Merge: squash to `develop` with `--delete-branch`, commit message `Closes #n`. `gh pr merge` requires explicit USER go-ahead per `github-ops` escalate rule.
+6. **PR & merge** — SPBED creates PR, SPSA approves, USER merges. Commits require explicit USER go-ahead per the Commit gate above — SPSA approval alone never authorizes a commit. PR requirements: Conventional Commits title, body What / Why / Breaking Changes (+ migration path) / Checklist (tests added, no new `any`, `interfaces.ts` intact, docs updated if needed), `pnpm audit --audit-level=high` clean, changeset file present. Checks must be green (`gh pr checks`). Merge: squash to `develop` with `--delete-branch`, commit message `Closes #n`. `gh pr merge` requires explicit USER go-ahead per `github-ops` escalate rule.
 
 7. **Release (develop -> main)** — `develop` is dev trunk, `main` is release-only. Promotion `develop->main` via PR, then `changeset version`, `pnpm build`, `gh release create` (requires USER go-ahead). If ADR test is positive ("does this decision constrain all future implementations?"), SPSA drafts ADR and USER approves before writing to `DECISION-LOG.md`.
 
@@ -102,7 +110,7 @@ Single source of truth for the end-to-end sequence 0-7. Normative — ad-hoc dis
 
 **Skill loading (normative for this lifecycle):** `git-workflow` MUST be fully loaded via the skill tool for any work touching steps 0-7. `handoff-protocol` MUST be fully loaded when creating, validating, or consuming a handoff, checking iteration (cap 4), or deciding routing/escalation; otherwise a targeted grep for `iteration|flags|routing` is sufficient. `github-ops` MUST be fully loaded when running any `gh` command or deciding Autonomous vs Escalate; otherwise grep for `gh pr merge|gh release|Escalate` is sufficient for awareness. Grep MUST NOT be used to reconstruct normative values (schema, matrix, caps, DoD).
 
-**Enforcement:** This section is normative. Pre-step checklist and handoff schema are mandatory gates. Audit trace: milestone -> issue(s) -> branch -> commit(s) -> PR -> squash-merge -> release. `develop`/`main` trunk discipline and branch lifecycle (rebase, squash, delete) are enforced via this lifecycle.
+**Enforcement:** This section is normative. Pre-step checklist and handoff schema are mandatory gates. No step authorizes a commit — commit authorization comes only from explicit USER go-ahead. Audit trace: milestone -> issue(s) -> branch -> commit(s, USER-authorized) -> PR -> squash-merge -> release. `develop`/`main` trunk discipline and branch lifecycle (rebase, squash, delete) are enforced via this lifecycle.
 
 **Precedent:** v1.0.2 — milestone `1 v1.0.2` + issues #3-#7, branch `fix/memory-redis-atomic-writes` JIT from `develop`, `SPBED->SPSA NEEDS_REVISION` (pool leak) -> fix -> `SPSA APPROVE -> SPQAE 50/50 -> SPSA final green -> commit 31f932d -> PR #8 -> squash-merge b740282 to develop, issue #3 closed.
 

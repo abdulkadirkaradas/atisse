@@ -26,7 +26,7 @@ New code: `packages/{core|provider-<name>|memory-<name>|context-<name>}/src/`. T
 
 ## Delivery
 
-Delivery lifecycle 0–7 (Govern → Release) is normative — SSOT is the `git-workflow` skill. `develop` is dev trunk, `main` release-only; JIT branches from `develop` (rebase, squash-merge, delete). Load `git-workflow` fully for any step 0–7; load `handoff-protocol`/`github-ops` fully for handoffs/`gh` (grep is insufficient for normative values). See `git-workflow` skill: Delivery lifecycle.
+Delivery lifecycle 0–7 (Govern → Release) is normative — SSOT is the `git-workflow` skill. `develop` is dev trunk, `main` release-only; JIT branches from `develop` (rebase, squash-merge, delete). No agent commits, stages, stashes, pushes, or merges without explicit USER authorization for that commit — SPSA approval is not commit authorization; leave the working tree uncommitted for USER review. Load `git-workflow` fully for any step 0–7; load `handoff-protocol`/`github-ops` fully for handoffs/`gh` (grep is insufficient for normative values). See `git-workflow` skill: Delivery lifecycle.
 
 ## When multiple approaches seem valid, decide in this order
 
@@ -53,6 +53,7 @@ Prior architectural decisions are recorded in `DECISION-LOG.md` (append-only, gr
 
 ## Hard stops (stop and ask, don't guess)
 
+- Any commit, stage, stash, push, checkout, restore, or `rm` for commit purposes without explicit USER authorization for that commit — committing without a USER go-ahead is forbidden even in BUILD MODE and even with SPSA approval.
 - Any edit to a protected file: `packages/core/src/interfaces.ts`, the `constraints`/`security`/`principles` skills, `DECISION-LOG.md`, or an agent profile. `opencode.json` is configured to **deny** these paths via `edit` for the subagents — but treat it as a guard, not a guarantee: it only covers the edit/write/patch tool family (a `bash` command like `sed -i` routes around it entirely), and `edit: deny` itself has had real reliability bug reports upstream. The actual backstop is still: stop and get an explicit user decision.
 - Any new **runtime** dependency in `packages/core`.
 - Any destructive command: publish, `git push --force`/`-f`, `git reset --hard`, `rm -rf`, process `kill`/`systemctl`, CI triggers. `opencode.json` denies these for the subagents — this is a **best-effort prefix-match guard, not a sandbox**, evadable by reordering args, `bash -c`, or aliases. Treat the deny as a tripwire, not a guarantee: if one of these becomes genuinely necessary, stop and ask, don't look for the gap in the pattern.
