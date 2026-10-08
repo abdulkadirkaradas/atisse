@@ -17,9 +17,9 @@
       "require": "./dist/index.cjs"
     },
     "./testing": {
-      "import": "./dist/testing/mock-provider.js",
-      "types": "./dist/testing/mock-provider.d.ts",
-      "require": "./dist/testing/mock-provider.cjs"
+      "import": "./dist/testing/index.js",
+      "types": "./dist/testing/index.d.ts",
+      "require": "./dist/testing/index.cjs"
     }
   },
   "files": [

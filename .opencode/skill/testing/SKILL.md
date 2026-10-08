@@ -17,8 +17,8 @@ Framework: Vitest + `@vitest/coverage-v8`. Fake timers per-test only
 
 ## Coverage minimums (blocks PR if under)
 
-`core` 70% lines/branches · `provider-openai`/`provider-anthropic`/`memory-inmemory`/
-`memory-redis` 60% lines · `context-rag` 50% lines.
+`core` 70% lines/branches · `provider-openai`/`provider-anthropic` 70% lines/branches ·
+`memory-inmemory`/`memory-redis` 60% lines · `context-rag` 50% lines.
 
 ## Layout
 
