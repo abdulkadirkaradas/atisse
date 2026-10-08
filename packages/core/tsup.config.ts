@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
-    'testing/mock-provider': 'src/testing/mock-provider.ts',
+    'testing/index': 'src/testing/index.ts',
   },
   splitting: false,
   clean: true,
@@ -11,4 +11,5 @@ export default defineConfig({
   dts: true,
   outDir: 'dist',
   tsconfig: 'tsconfig.json',
+  external: ['vitest'],
 });
