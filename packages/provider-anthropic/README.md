@@ -24,7 +24,7 @@ npm install @atisse/provider-anthropic
 pnpm add @atisse/provider-anthropic
 ```
 
-> `@atisse/core` and `@anthropic-ai/sdk@^0.100.1` are peer dependencies. Install them alongside this package.
+> `@atisse/core` and `@anthropic-ai/sdk@^0.125.0` are peer dependencies. Install them alongside this package.
 
 ## Quick Start
 

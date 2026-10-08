@@ -24,7 +24,7 @@ npm install @atisse/provider-openai
 pnpm add @atisse/provider-openai
 ```
 
-> `@atisse/core` and `openai@^6.39.1` are peer dependencies. Install them alongside this package.
+> `@atisse/core` and `openai@^7.15.0` are peer dependencies. Install them alongside this package.
 
 ## Quick Start
 
