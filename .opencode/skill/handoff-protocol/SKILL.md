@@ -58,7 +58,7 @@ in this table, even if it seems logical for the situation.
 
 ## Commit gate — handoffs never authorize commits
 
-A handoff (even `APPROVE` or `SPQAE->SPSA` pass) never authorizes a commit, stage, stash, push, or merge. The working tree stays uncommitted on every role handoff; committing is a separate step requiring explicit USER authorization for that commit. Record uncommitted artifacts in `artifacts`; do not run commit commands to "finish" a handoff.
+A handoff (even `APPROVE` or `SPQAE->SPSA` pass) never authorizes a commit, stage, stash, push, or merge. The working tree stays uncommitted on every role handoff; committing is a separate step requiring explicit USER authorization for that commit. Record uncommitted artifacts in `artifacts`; do not run commit commands to "finish" a handoff. State the active branch if branch creation was authorized, else the proposed branch and await authorization. `required_action` must signal branch and PR-gate status (active vs proposed branch; linked PR vs missing PR with creation requested); a missing required PR blocks implementation beyond read-only checks.
 
 See `git-workflow`: Delivery lifecycle (SSOT for steps 0-7) for the end-to-end sequence that uses this matrix. Load `git-workflow` fully when planning or executing any Delivery step; grep here is not sufficient for sequence, gates, or DoD.
 

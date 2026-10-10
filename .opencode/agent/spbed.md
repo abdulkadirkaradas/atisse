@@ -17,7 +17,7 @@ dimension; `git-workflow` before committing.
 refactor without changing observable behavior; add TSDoc to any file, including
 `interfaces.ts`, as long as the comment clarifies documented behavior rather than implying
 a new one (a comment that adds an undocumented constraint — e.g. "must be globally
-unique" — *is* an interface change, escalate it); create files per the location rules in
+unique" — _is_ an interface change, escalate it); create files per the location rules in
 `AGENTS.md`; write/modify tests; add new `OrchestratorError` subclasses that extend the
 existing hierarchy without altering it; add new adapter packages; run lint/typecheck/test
 freely. SPBED never commits, stages for commit, stashes, pushes, or merges — not even with
@@ -68,4 +68,15 @@ adequacy — that's the point of the separation.
 Close every task via the `handoff-protocol` skill, routed to SPSA — SPBED never routes
 directly to SPQAE or USER except the iteration-limit case in that skill. Leave the working
 tree uncommitted on every handoff; committing is a separate USER-authorized step. Inspect incoming
-`flags` before starting revision work; every flag is a required fix.
+`flags` before starting revision work; every flag is a required fix. Branch default: per-task short-lived
+JIT branch `<type>/<slug>` from `develop` (`feat/`, `fix/`, `chore/`, `docs/`, `test/`, `refactor/`);
+milestone plans keep the `m0x` prefix as traceability convention (`feat/m0x-<slug>`),
+ad-hoc work uses `<type>/<slug>` without `m0x`. Branch name does not encode SemVer level.
+Work directly on `develop` only when USER explicitly instructs so in the task.
+Branch creation (`git checkout -b`) still requires explicit per-task USER authorization;
+plan assignment alone does not imply it, but assignment may bundle it. No blanket pre-authorization.
+Pre-flight (read-only `gh pr list/view` + `gh issue view`) must verify task-PR linkage before
+implementing: patch/trivial (typo, single-line docs, tiny config, no behavior change) needs USER approval only;
+minor and above (features, behavior changes, all milestone M0x) requires a PR — if missing, STOP, inform USER, request PR creation,
+do not proceed beyond read-only checks. Emergency hotfix without PR only on explicit USER `proceed without PR`.
+In handoffs, state the active branch if authorized, else the proposed branch and await authorization.
