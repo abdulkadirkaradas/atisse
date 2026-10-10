@@ -551,6 +551,66 @@ describe('Integration: Orchestrator Core Run', () => {
       ).toThrow(ConfigValidationError);
     });
 
+    it('retry.jitterFactor: NaN throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { jitterFactor: NaN },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('retry.jitterFactor: Infinity throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { jitterFactor: Infinity },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('retry.jitterFactor: -0.5 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { jitterFactor: -0.5 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('retry.jitterFactor: 1.5 throws ConfigValidationError', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { jitterFactor: 1.5 },
+          }),
+      ).toThrow(ConfigValidationError);
+    });
+
+    it('retry.jitterFactor: 0 is accepted (falsy-safe valid value)', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { jitterFactor: 0 },
+          }),
+      ).not.toThrow();
+    });
+
+    it('retry.jitterFactor: 1 is accepted', () => {
+      expect(
+        () =>
+          new Orchestrator({
+            provider: createProvider(),
+            retry: { jitterFactor: 1 },
+          }),
+      ).not.toThrow();
+    });
+
     it('duplicate tool names throws ConfigValidationError', () => {
       const tool: Tool = {
         name: 'duplicate',

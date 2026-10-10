@@ -170,6 +170,7 @@ interface RetryPolicy {
   baseDelayMs: number /*500*/;
   maxDelayMs: number /*30_000*/;
   jitter: boolean /*true, 30% partial*/;
+  jitterFactor?: number /*0-1, default 0.3, only effective when jitter*/;
 }
 interface TimeoutPolicy {
   generateTimeoutMs: number /*30_000*/;

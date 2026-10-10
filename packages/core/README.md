@@ -104,20 +104,20 @@ Validates configuration eagerly — throws `ConfigValidationError` on invalid in
 
 **`OrchestratorConfig` fields**
 
-| Field              | Type                                  | Required | Description                                   |
-| ------------------ | ------------------------------------- | -------- | --------------------------------------------- |
-| `provider`         | `AIProvider`                          | Yes      | Primary LLM provider                          |
-| `fallbackProvider` | `AIProvider`                          | No       | Fallback provider on primary failure          |
-| `systemPrompt`     | `string`                              | No       | System-level instruction                      |
-| `tools`            | `Tool[]`                              | No       | Tool definitions with execute implementations |
-| `contextProviders` | `ContextProvider[]`                   | No       | Context injection providers                   |
-| `memoryAdapter`    | `MemoryAdapter`                       | No       | Session memory persistence                    |
-| `retry`            | `Partial<RetryPolicy>`                | No       | Retry configuration                           |
-| `timeout`          | `Partial<TimeoutPolicy>`              | No       | Timeout configuration                         |
-| `toolPolicy`       | `Partial<ToolPolicy>`                 | No       | Tool execution policy                         |
-| `hooks`            | `Partial<HookRegistry>`               | No       | Lifecycle hooks                               |
-| `profiles`         | `Record<string, OrchestratorProfile>` | No       | Named configuration profiles                  |
-| `logger`           | `Logger`                              | No       | Logger instance                               |
+| Field              | Type                                  | Required | Description                                         |
+| ------------------ | ------------------------------------- | -------- | --------------------------------------------------- |
+| `provider`         | `AIProvider`                          | Yes      | Primary LLM provider                                |
+| `fallbackProvider` | `AIProvider`                          | No       | Fallback provider on primary failure                |
+| `systemPrompt`     | `string`                              | No       | System-level instruction                            |
+| `tools`            | `Tool[]`                              | No       | Tool definitions with execute implementations       |
+| `contextProviders` | `ContextProvider[]`                   | No       | Context injection providers                         |
+| `memoryAdapter`    | `MemoryAdapter`                       | No       | Session memory persistence                          |
+| `retry`            | `Partial<RetryPolicy>`                | No       | Retry configuration (jitterFactor 0-1, default 0.3) |
+| `timeout`          | `Partial<TimeoutPolicy>`              | No       | Timeout configuration                               |
+| `toolPolicy`       | `Partial<ToolPolicy>`                 | No       | Tool execution policy                               |
+| `hooks`            | `Partial<HookRegistry>`               | No       | Lifecycle hooks                                     |
+| `profiles`         | `Record<string, OrchestratorProfile>` | No       | Named configuration profiles                        |
+| `logger`           | `Logger`                              | No       | Logger instance                                     |
 
 **`RunInput` fields**
 

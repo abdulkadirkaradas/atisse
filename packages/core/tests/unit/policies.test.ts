@@ -18,6 +18,7 @@ import {
   ProviderAuthError,
   MaxRetriesExceededError,
   RunCancelledError,
+  ConfigValidationError,
 } from '../../src/errors.js';
 import type { RetryPolicy, TimeoutPolicy, ToolPolicy } from '../../src/interfaces.js';
 
@@ -154,6 +155,68 @@ describe('policies', () => {
       expect(calculateDelay(-1, policy)).toBe(500);
       // attempt -2: 1000 * 2^(-2) = 250
       expect(calculateDelay(-2, policy)).toBe(250);
+    });
+  });
+
+  describe('jitterFactor', () => {
+    const basePolicy: RetryPolicy = {
+      maxAttempts: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 30_000,
+      jitter: true,
+    };
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('defaults to 0.3 partial jitter when jitterFactor is absent', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(1);
+      expect(calculateDelay(0, basePolicy)).toBe(1300);
+    });
+
+    it('jitterFactor: 0 produces deterministic backoff', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.999);
+      expect(calculateDelay(0, { ...basePolicy, jitterFactor: 0 })).toBe(1000);
+    });
+
+    it('jitterFactor: 0.5 scales jitter to half the capped delay', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(1);
+      expect(calculateDelay(0, { ...basePolicy, jitterFactor: 0.5 })).toBe(1500);
+    });
+
+    it('jitterFactor: 1 applies full jitter', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(1);
+      expect(calculateDelay(0, { ...basePolicy, jitterFactor: 1 })).toBe(2000);
+    });
+
+    it('clamps jitterFactor above 1 to full jitter (defense-in-depth)', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(1);
+      expect(calculateDelay(0, { ...basePolicy, jitterFactor: 1.5 })).toBe(2000);
+    });
+
+    it('clamps negative jitterFactor to deterministic backoff (defense-in-depth)', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.999);
+      expect(calculateDelay(0, { ...basePolicy, jitterFactor: -0.5 })).toBe(1000);
+    });
+
+    it('ignores jitterFactor when jitter is false', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.999);
+      expect(calculateDelay(0, { ...basePolicy, jitter: false, jitterFactor: 0.5 })).toBe(
+        1000,
+      );
+    });
+
+    it('throws ConfigValidationError for NaN jitterFactor', () => {
+      expect(() => calculateDelay(0, { ...basePolicy, jitterFactor: NaN })).toThrow(
+        ConfigValidationError,
+      );
+    });
+
+    it('throws ConfigValidationError for Infinite jitterFactor', () => {
+      expect(() => calculateDelay(0, { ...basePolicy, jitterFactor: Infinity })).toThrow(
+        ConfigValidationError,
+      );
     });
   });
 
@@ -472,6 +535,18 @@ describe('policies', () => {
     });
   });
 
+  describe('DEFAULT_RETRY', () => {
+    it('includes jitterFactor 0.3 as single source of truth', () => {
+      expect(DEFAULT_RETRY).toEqual({
+        maxAttempts: 3,
+        baseDelayMs: 500,
+        maxDelayMs: 30_000,
+        jitter: true,
+        jitterFactor: 0.3,
+      });
+    });
+  });
+
   describe('DEFAULT_TIMEOUT', () => {
     it('has expected default timeout values', () => {
       expect(DEFAULT_TIMEOUT).toEqual({
@@ -532,6 +607,20 @@ describe('policies', () => {
       expect(result).toEqual(override);
       // Original base is not mutated
       expect(base.maxAttempts).toBe(3);
+    });
+
+    it('preserves jitterFactor: 0 override (falsy-safe)', () => {
+      const base: RetryPolicy = {
+        maxAttempts: 3,
+        baseDelayMs: 500,
+        maxDelayMs: 30_000,
+        jitter: true,
+        jitterFactor: 0.3,
+      };
+
+      const result = mergeRetryPolicy(base, { jitterFactor: 0 });
+
+      expect(result.jitterFactor).toBe(0);
     });
   });
 

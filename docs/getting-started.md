@@ -48,7 +48,7 @@ All `OrchestratorConfig` fields:
 | `tools`            | `Tool[]?`                              | —                                                                           | Tool definitions; duplicate names throw at construction |
 | `contextProviders` | `ContextProvider[]?`                   | —                                                                           | Context providers for injection-time retrieval          |
 | `memoryAdapter`    | `MemoryAdapter?`                       | —                                                                           | Session persistence adapter                             |
-| `retry`            | `Partial<RetryPolicy>?`                | `{ maxAttempts: 3, baseDelayMs: 500, maxDelayMs: 30000, jitter: true }`     | Retry policy — partial overrides merge with defaults    |
+| `retry`            | `Partial<RetryPolicy>?`                | `{ maxAttempts: 3, baseDelayMs: 500, maxDelayMs: 30000, jitter: true, jitterFactor: 0.3 }` | Retry policy — partial overrides merge with defaults    |
 | `timeout`          | `Partial<TimeoutPolicy>?`              | `{ generateTimeoutMs: 30000, toolTimeoutMs: 10000, totalTimeoutMs: 60000 }` | Timeout policy — partial overrides merge with defaults  |
 | `toolPolicy`       | `Partial<ToolPolicy>?`                 | `{ maxToolRounds: 5, allowParallelTools: false, toolTimeoutMs: 10000 }`     | Tool execution policy                                   |
 | `hooks`            | `Partial<HookRegistry>?`               | —                                                                           | Lifecycle hooks — serial, pipeline-blocking             |
@@ -65,6 +65,7 @@ The constructor throws `ConfigValidationError` for:
 - `maxToolRounds < 1`
 - Timeout values `<= 0` or `Infinity`
 - `retry.maxAttempts < 1` or `Infinity`
+- `retry.jitterFactor` not a finite number in `[0, 1]`
 - Duplicate tool names
 - Empty tool `inputSchema` (`{}`)
 
