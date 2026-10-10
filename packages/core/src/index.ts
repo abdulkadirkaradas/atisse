@@ -73,3 +73,7 @@ export {
 
 // State machine
 export { LifecycleStateMachine } from './lifecycle.js';
+
+// Built-in logger implementations
+export { JsonLogger, PrettyLogger } from './logger/index.js';
+export type { JsonLoggerOptions, PrettyLoggerOptions } from './logger/index.js';
