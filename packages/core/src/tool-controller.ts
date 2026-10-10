@@ -1,4 +1,11 @@
-import type { Tool, ToolCall, ToolResult, ToolPolicy, Logger } from './interfaces.js';
+import type {
+  Tool,
+  ToolCall,
+  ToolResult,
+  ToolPolicy,
+  Logger,
+  ValidationErrorDetail,
+} from './interfaces.js';
 import {
   ToolNotFoundError,
   ToolValidationError,
@@ -97,12 +104,17 @@ export class ToolController {
       const result = zodSchema.safeParse(input);
 
       if (!result.success) {
-        const errors = result.error.issues.map((issue) => {
-          const path = issue.path.join('.');
-          return path ? `${path}: ${issue.message}` : issue.message;
+        const details: ValidationErrorDetail[] = result.error.issues.map((i) => ({
+          fieldPath: i.path.join('.'),
+          constraint: i.message,
+          received: getNestedValue(input, i.path),
+        }));
+        // Do NOT include details[].received in logger payload — S-1
+        this.logger.warn('Tool input validation failed', {
+          toolName,
+          errors: details.map((d) => `${d.fieldPath ? d.fieldPath + ': ' : ''}${d.constraint}`),
         });
-        this.logger.warn('Tool input validation failed', { toolName, errors });
-        throw new ToolValidationError(toolName, errors);
+        throw new ToolValidationError(toolName, details);
       }
 
       return result.data;
@@ -340,4 +352,19 @@ export class ToolController {
     });
     return z.never();
   }
+}
+
+/**
+ * Traverse `input` by a Zod issue path to capture the raw failing value.
+ * Returns undefined when the path cannot be resolved.
+ */
+function getNestedValue(input: unknown, path: readonly PropertyKey[]): unknown {
+  let current: unknown = input;
+  for (const segment of path) {
+    if (typeof current !== 'object' || current === null) {
+      return undefined;
+    }
+    current = (current as Record<PropertyKey, unknown>)[segment];
+  }
+  return current;
 }

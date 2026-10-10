@@ -160,6 +160,17 @@ export interface ToolResultError {
 }
 
 /**
+ * Structured detail for a single field-level validation failure.
+ * Replaces string parsing of `ToolValidationError.validationErrors`.
+ */
+export interface ValidationErrorDetail {
+  readonly fieldPath: string;
+  readonly constraint: string;
+  /** Raw value that failed validation — NEVER log or emit in events (S-1). Inspect only in catch block. */
+  readonly received: unknown;
+}
+
+/**
  * Memory adapter for session persistence.
  */
 export interface MemoryAdapter {
