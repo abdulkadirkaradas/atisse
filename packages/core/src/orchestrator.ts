@@ -109,6 +109,16 @@ export class Orchestrator {
       );
     }
 
+    // Validate retry.jitterFactor is a finite number in [0, 1]
+    if (config.retry?.jitterFactor !== undefined) {
+      const factor = config.retry.jitterFactor;
+      if (!Number.isFinite(factor) || factor < 0 || factor > 1) {
+        validationErrors.push(
+          `retry.jitterFactor must be a finite number in [0, 1] — received: ${config.retry.jitterFactor}`,
+        );
+      }
+    }
+
     if (config.contextPolicy?.maxMessagesPerProvider !== undefined) {
       const v = config.contextPolicy.maxMessagesPerProvider;
       if (!Number.isInteger(v) || v < 1 || !isFinite(v)) {

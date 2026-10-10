@@ -1,6 +1,13 @@
 import type { RetryPolicy, TimeoutPolicy, ToolPolicy, ContextPolicy } from './interfaces.js';
 import type { OrchestratorError } from './errors.js';
-import { isRetryable, MaxRetriesExceededError, ProviderRateLimitError, RunCancelledError, TimeoutExceededError } from './errors.js';
+import {
+  isRetryable,
+  ConfigValidationError,
+  MaxRetriesExceededError,
+  ProviderRateLimitError,
+  RunCancelledError,
+  TimeoutExceededError,
+} from './errors.js';
 
 // ── Default Constants ─────────────────────────────────────────────────────────
 
@@ -9,6 +16,7 @@ const DEFAULT_RETRY: RetryPolicy = {
   baseDelayMs: 500,
   maxDelayMs: 30_000,
   jitter: true,
+  jitterFactor: 0.3,
 };
 
 const DEFAULT_TIMEOUT: TimeoutPolicy = {
@@ -102,7 +110,13 @@ function calculateDelay(attempt: number, policy: RetryPolicy, error?: Orchestrat
   const capped = Math.min(exponential, policy.maxDelayMs);
 
   if (policy.jitter) {
-    return capped + Math.random() * 0.3 * capped;
+    const factor = policy.jitterFactor ?? 0.3; // DO NOT use || — 0 is valid, use ??
+    if (!Number.isFinite(factor)) {
+      throw new ConfigValidationError(['jitterFactor must be a finite number in [0, 1]']);
+    }
+    // clamp is defense-in-depth, authoritative validation is in orchestrator.ts
+    const clampedFactor = Math.max(0, Math.min(1, factor));
+    return capped + Math.random() * clampedFactor * capped;
   }
 
   return capped;

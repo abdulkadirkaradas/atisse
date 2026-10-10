@@ -86,6 +86,13 @@ describe('profile', () => {
         expect(result.retry.jitter).toBe(true);
       });
 
+      it('preserves jitterFactor: 0 through base merge (falsy-safe)', () => {
+        const config = createConfig({ retry: { jitterFactor: 0 } });
+        const result = resolveConfig(config, undefined, new Map());
+
+        expect(result.retry.jitterFactor).toBe(0);
+      });
+
       it('applies timeout partial overrides to defaults when no profile', () => {
         const config = createConfig({ timeout: { generateTimeoutMs: 45_000 } });
         const result = resolveConfig(config, undefined, new Map());
@@ -184,6 +191,15 @@ describe('profile', () => {
         // But baseDelayMs goes back to DEFAULT (500) because profile retry replaces entirely
         expect(result.retry.baseDelayMs).toBe(500);
         expect(result.retry.jitter).toBe(true);
+      });
+
+      it('profile retry preserves jitterFactor: 0 (falsy-safe)', () => {
+        const config = createConfig({
+          profiles: { test: createProfile('test', { retry: { jitterFactor: 0 } }) },
+        });
+        const result = resolveConfig(config, 'test', new Map());
+
+        expect(result.retry.jitterFactor).toBe(0);
       });
 
       it('profile hooks concatenated (base first, profile second)', () => {

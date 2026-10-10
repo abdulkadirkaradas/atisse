@@ -216,7 +216,7 @@ export interface StepTimings {
 
 /**
  * Retry policy configuration.
- * Defaults: maxAttempts=3, baseDelayMs=500, maxDelayMs=30000, jitter=true
+ * Defaults: maxAttempts=3, baseDelayMs=500, maxDelayMs=30000, jitter=true, jitterFactor=0.3
  */
 export interface RetryPolicy {
   /** Total attempts (1 initial + N-1 retries). Default: 3 */
@@ -227,6 +227,15 @@ export interface RetryPolicy {
   maxDelayMs: number;
   /** Apply 30% partial jitter. Default: true */
   jitter: boolean;
+  /**
+   * Jitter magnitude as a fraction of the delay (0-1).
+   * Only effective when jitter === true.
+   * 0 = no jitter (deterministic backoff).
+   * 1 = full jitter (random between 0 and capped delay).
+   * 0.3 = partial jitter (30% of capped delay added randomly).
+   * When absent, defaults to 0.3 (preserving current behavior).
+   */
+  jitterFactor?: number;
 }
 
 /**
