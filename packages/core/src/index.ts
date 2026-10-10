@@ -12,6 +12,7 @@ export type {
   ToolCall,
   ToolResult,
   ToolResultError,
+  ValidationErrorDetail,
   MemoryAdapter,
   ContextProvider,
   ContextProviderInput,

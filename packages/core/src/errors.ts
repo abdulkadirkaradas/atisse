@@ -1,4 +1,4 @@
-import type { LifecycleState, OrchestratorErrorCode } from './interfaces.js';
+import type { LifecycleState, OrchestratorErrorCode, ValidationErrorDetail } from './interfaces.js';
 
 /**
  * Base error class for all orchestrator errors.
@@ -112,11 +112,35 @@ export class ToolValidationError extends OrchestratorError {
   readonly code = 'TOOL_VALIDATION_FAILED' as const;
   readonly retryable = false;
 
+  public readonly details: ValidationErrorDetail[];
+
   constructor(
     public readonly toolName: string,
-    public readonly validationErrors: string[],
+    validationErrors: string[] | ValidationErrorDetail[],
   ) {
     super(`Tool input validation failed: ${toolName}`);
+
+    const isDetailArray =
+      validationErrors.length > 0 &&
+      validationErrors.every(
+        (v): v is ValidationErrorDetail =>
+          typeof v === 'object' && v !== null && 'fieldPath' in v && 'constraint' in v,
+      );
+    if (isDetailArray) {
+      this.details = validationErrors;
+    } else {
+      this.details = (validationErrors as string[]).map((msg) => {
+        const [fieldPath = '', constraint = msg] = msg.includes(':')
+          ? msg.split(':').map((s) => s.trim())
+          : ['', msg];
+        return { fieldPath, constraint, received: undefined };
+      });
+    }
+  }
+
+  /** @deprecated Use `details` — structured replacement for string parsing. */
+  get validationErrors(): string[] {
+    return this.details.map((d) => `${d.fieldPath ? d.fieldPath + ': ' : ''}${d.constraint}`);
   }
 }
 
